@@ -33,6 +33,23 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+export const authAccounts = pgTable('auth_accounts', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull().unique(),
+  displayUsername: text('display_username').notNull(),
+  email: text('email').notNull(),
+  displayName: text('display_name').notNull(),
+  avatarUrl: text('avatar_url'),
+  bio: text('bio').notNull().default(''),
+  role: text('role').notNull().default('member'),
+  isAdmin: boolean('is_admin').notNull().default(false),
+  passwordHash: text('password_hash'),
+  firebaseUid: text('firebase_uid').unique(),
+  provider: text('provider').notNull().default('password'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 export const categories = pgTable('categories', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -75,6 +92,13 @@ export const posts = pgTable('posts', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+export const mediaFolders = pgTable('media_folders', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  color: text('color').notNull().default('#2563EB'),
+  createdAt: text('created_at').notNull(),
+});
+
 export const mediaAssets = pgTable('media_assets', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
@@ -85,6 +109,7 @@ export const mediaAssets = pgTable('media_assets', {
   dimensions: text('dimensions').notNull(),
   uploadedAt: text('uploaded_at').notNull(),
   uploadedBy: text('uploaded_by').notNull(),
+  folderId: text('folder_id'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -173,5 +198,17 @@ export const doctors = pgTable('doctors', {
   featured: boolean('featured').notNull().default(false),
   status: text('status').notNull().default('active'),
   updatedAt: text('updated_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const medicalNews = pgTable('medical_news', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  source: text('source').notNull(),
+  publishedAt: text('published_at').notNull(),
+  categoryLabel: text('category_label').notNull(),
+  imageUrl: text('image_url').notNull(),
+  doctorName: text('doctor_name').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });

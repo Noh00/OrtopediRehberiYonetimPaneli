@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ShieldCheck, UserPlus, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Edit3, Search, ShieldCheck, Trash2, UserPlus, X } from 'lucide-react';
 import {
   PermissionKey,
   RoleDefinition,
@@ -16,7 +16,9 @@ interface UsersRolesViewProps {
   currentUserId: string;
   canManageUsers: boolean;
   rolePermissions: RolePermissionMatrix;
-  onAddUser: (user: TeamUser) => void;
+  onAddUser: (user: TeamUser) => Promise<void> | void;
+  onUpdateUser: (user: TeamUser) => Promise<void> | void;
+  onDeleteUser: (userId: string) => Promise<void> | void;
   onUpdateUserRole: (userId: string, role: UserRole) => void;
   onToggleUserStatus: (userId: string) => void;
   onTogglePermission: (role: UserRole, perm: PermissionKey) => void;
@@ -42,36 +44,112 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
   canManageUsers,
   rolePermissions,
   onAddUser,
+  onUpdateUser,
+  onDeleteUser,
   onUpdateUserRole,
   onToggleUserStatus,
   onTogglePermission,
 }) => {
-  const roleItems = roles && roles.length > 0
-    ? roles.map((r) => ({ key: r.key, name: r.name }))
-    : DEFAULT_ROLE_KEYS.map((k) => ({ key: k, name: ROLE_LABELS[k] || k }));
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const roleItems =
+    roles && roles.length > 0
+      ? roles.map((r) => ({ key: r.key, name: r.name }))
+      : DEFAULT_ROLE_KEYS.map((k) => ({ key: k, name: ROLE_LABELS[k] || k }));
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<TeamUser | null>(null);
+
+  // Add / Edit modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('writer');
+  const [status, setStatus] = useState<'active' | 'suspended'>('active');
   const [department, setDepartment] = useState('İçerik Masası');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleInvite = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
-    onAddUser({
-      id: `usr-${Date.now()}`,
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      status: 'active',
-      department: department.trim() || 'Editoryal Ekip',
-      lastActiveAt: '2026-11-26 09:45',
-      joinedAt: '2026-11-26',
-      postsPublished: 0,
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return users.filter((u) => {
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (!q) return true;
+      return (
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.department.toLowerCase().includes(q)
+      );
     });
+  }, [users, searchQuery, roleFilter]);
+
+  const openAddModal = () => {
+    setEditingUser(null);
     setName('');
     setEmail('');
-    setInviteOpen(false);
+    setRole('writer');
+    setStatus('active');
+    setDepartment('İçerik Masası');
+    setAvatarUrl('');
+    setModalOpen(true);
+  };
+
+  const openEditModal = (user: TeamUser) => {
+    setEditingUser(user);
+    setName(user.name);
+    setEmail(user.email);
+    setRole(user.role);
+    setStatus(user.status);
+    setDepartment(user.department);
+    setAvatarUrl(user.avatarUrl || '');
+    setModalOpen(true);
+  };
+
+  const handleSubmitModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+
+    setSaving(true);
+    try {
+      if (editingUser) {
+        const isSelf = editingUser.id === currentUserId;
+        await onUpdateUser({
+          ...editingUser,
+          name: name.trim(),
+          email: email.trim(),
+          role: isSelf ? editingUser.role : role,
+          status: isSelf ? editingUser.status : status,
+          department: department.trim() || 'Editoryal Ekip',
+          avatarUrl: avatarUrl.trim() || undefined,
+        });
+      } else {
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const nowStamp = now.toISOString().slice(0, 16).replace('T', ' ');
+        await onAddUser({
+          id: `usr-${Date.now()}`,
+          name: name.trim(),
+          email: email.trim(),
+          role,
+          status,
+          department: department.trim() || 'Editoryal Ekip',
+          avatarUrl: avatarUrl.trim() || undefined,
+          lastActiveAt: nowStamp,
+          joinedAt: today,
+          postsPublished: 0,
+        });
+      }
+      setModalOpen(false);
+      setEditingUser(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteUser) return;
+    await onDeleteUser(confirmDeleteUser.id);
+    setConfirmDeleteUser(null);
   };
 
   return (
@@ -84,19 +162,46 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
               Ekip Üyeleri ve Erişim Durumu
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Toplam {users.length} kayıtlı üye · Üst menüdeki profil seçiciden rol yetkilerini test edebilirsiniz.
+              Toplam {users.length} kayıtlı kullanıcı · Üyeleri düzenleyebilir, askıya alabilir veya silebilirsiniz.
             </p>
           </div>
           {canManageUsers && (
             <button
               type="button"
-              onClick={() => setInviteOpen(true)}
+              onClick={openAddModal}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white hover:bg-blue-700 whitespace-nowrap"
             >
               <UserPlus className="h-4 w-4" />
               <span>Yeni Üye Ekle</span>
             </button>
           )}
+        </div>
+
+        {/* Search & Role Filter */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/20">
+          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Ad, e-posta veya birim ara..."
+              className="h-8 w-full rounded-lg border border-slate-200 bg-white pr-3 pl-8 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+          </div>
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            aria-label="Rol filtresi"
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <option value="all">Tüm Roller ({users.length})</option>
+            {roleItems.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="overflow-x-auto">
@@ -108,79 +213,115 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
                 <th className="px-4 py-3">Rol</th>
                 <th className="px-4 py-3 text-right">Yayın</th>
                 <th className="px-4 py-3">Son Etkinlik</th>
-                <th className="px-5 py-3 text-right">Durum</th>
+                <th className="px-4 py-3">Durum</th>
+                <th className="px-5 py-3 text-right">İşlemler</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {users.map((user) => {
-                const isSelf = user.id === currentUserId;
-                return (
-                  <tr key={user.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <SafeImage
-                          src={user.avatarUrl}
-                          alt={user.name}
-                          fallbackLabel={user.name}
-                          isAvatar
-                          className="h-9 w-9 shrink-0 rounded-lg object-cover"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-900 dark:text-slate-100">
-                            {user.name}{' '}
-                            {isSelf && (
-                              <span className="ml-1 text-[11px] font-normal text-blue-600 dark:text-blue-400">
-                                (Aktif Oturum)
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {user.email}
-                          </p>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-8 text-center text-xs text-slate-500">
+                    Şu anda Herhangi bir veri bulunamadı
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user) => {
+                  const isSelf = user.id === currentUserId;
+                  return (
+                    <tr key={user.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <SafeImage
+                            src={user.avatarUrl}
+                            alt={user.name}
+                            fallbackLabel={user.name}
+                            isAvatar
+                            className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">
+                              {user.name}{' '}
+                              {isSelf && (
+                                <span className="ml-1 text-[11px] font-normal text-blue-600 dark:text-blue-400">
+                                  (Aktif Oturum)
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {user.email}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                      {user.department}
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        disabled={!canManageUsers || isSelf}
-                        value={user.role}
-                        onChange={(e) => onUpdateUserRole(user.id, e.target.value as UserRole)}
-                        aria-label={`${user.name} rolü`}
-                        className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                      >
-                        {roleItems.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-slate-700 dark:text-slate-300">
-                      {user.postsPublished}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                      {user.lastActiveAt}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        disabled={!canManageUsers || isSelf}
-                        onClick={() => onToggleUserStatus(user.id)}
-                        className={`text-xs font-medium disabled:opacity-60 ${
-                          user.status === 'active'
-                            ? 'text-emerald-700 dark:text-emerald-400'
-                            : 'text-red-600 dark:text-red-400'
-                        }`}
-                      >
-                        {user.status === 'active' ? 'Aktif' : 'Askıda'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                        {user.department}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          disabled={!canManageUsers || isSelf}
+                          value={user.role}
+                          onChange={(e) => onUpdateUserRole(user.id, e.target.value as UserRole)}
+                          aria-label={`${user.name} rolü`}
+                          className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        >
+                          {roleItems.map((r) => (
+                            <option key={r.key} value={r.key}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-slate-700 dark:text-slate-300">
+                        {user.postsPublished}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                        {user.lastActiveAt}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          disabled={!canManageUsers || isSelf}
+                          onClick={() => onToggleUserStatus(user.id)}
+                          className={`text-xs font-medium disabled:opacity-60 ${
+                            user.status === 'active'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
+                          {user.status === 'active' ? 'Aktif' : 'Askıda'}
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          {canManageUsers && (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(user)}
+                              aria-label={`${user.name} kullanıcısını düzenle`}
+                              title="Kullanıcıyı düzenle"
+                              className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canManageUsers && (
+                            <button
+                              type="button"
+                              disabled={isSelf}
+                              onClick={() => setConfirmDeleteUser(user)}
+                              aria-label={`${user.name} kullanıcısını sil`}
+                              title={isSelf ? 'Aktif oturumdaki kullanıcı silinemez' : 'Kullanıcıyı sil'}
+                              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -246,26 +387,29 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
         </div>
       </section>
 
-      {/* Invite Modal */}
-      {inviteOpen && (
+      {/* Add / Edit User Modal */}
+      {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-                Yeni Ekip Üyesi Ekle
+                {editingUser ? `Kullanıcıyı Düzenle: ${editingUser.name}` : 'Yeni Ekip Üyesi Ekle'}
               </h3>
               <button
                 type="button"
-                onClick={() => setInviteOpen(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                onClick={() => {
+                  setModalOpen(false);
+                  setEditingUser(null);
+                }}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <form onSubmit={handleInvite} className="mt-4 space-y-4">
+            <form onSubmit={handleSubmitModal} className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Ad Soyad
+                  Ad Soyad *
                 </label>
                 <input
                   type="text"
@@ -278,14 +422,14 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Kurumsal E-posta
+                  Kurumsal E-posta *
                 </label>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="deniz.kaya@kalemdesk.com"
+                  placeholder="deniz.kaya@ortopedirehberi.com"
                   className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
@@ -295,9 +439,10 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
                     Rol
                   </label>
                   <select
+                    disabled={editingUser?.id === currentUserId}
                     value={role}
                     onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     {roleItems.map((r) => (
                       <option key={r.key} value={r.key}>
@@ -308,32 +453,96 @@ export const UsersRolesView: React.FC<UsersRolesViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Birim
+                    Hesap Durumu
                   </label>
-                  <input
-                    type="text"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
+                  <select
+                    disabled={editingUser?.id === currentUserId}
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as 'active' | 'suspended')}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value="active">Aktif</option>
+                    <option value="suspended">Askıda</option>
+                  </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Birim / Departman
+                </label>
+                <input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Profil Fotoğrafı URL (İsteğe Bağlı)
+                </label>
+                <input
+                  type="text"
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  placeholder="https://... veya /src/assets/..."
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setInviteOpen(false)}
+                  onClick={() => {
+                    setModalOpen(false);
+                    setEditingUser(null);
+                  }}
                   className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                  disabled={saving}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  Ekibe Ekle
+                  {saving
+                    ? 'Kaydediliyor...'
+                    : editingUser
+                      ? 'Değişiklikleri Kaydet'
+                      : 'Ekibe Ekle'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {confirmDeleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+            <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+              Kullanıcıyı Sil
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              <strong className="text-slate-900 dark:text-white">{confirmDeleteUser.name}</strong> ({confirmDeleteUser.email}) hesabını ekipten kalıcı olarak silmek istediğinize emin misiniz?
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteUser(null)}
+                className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="rounded-lg bg-red-600 px-4 py-2 text-xs font-medium text-white hover:bg-red-700"
+              >
+                Evet, Kullanıcıyı Sil
+              </button>
+            </div>
           </div>
         </div>
       )}

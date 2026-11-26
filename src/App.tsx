@@ -6,20 +6,24 @@ import {
   INITIAL_SITE_BRAND,
   INITIAL_SITE_SEO,
   INITIAL_SPAM_CONFIG,
-  TRAFFIC_SERIES_30D,
 } from './data/initialData';
 import {
   AppNotification,
   BlogPost,
   Category,
+  DailyTrafficPoint,
   DoctorProfile,
   MediaAsset,
+  MediaFolder,
+  MedicalNewsItem,
   ModerationComment,
   ModerationStatus,
   NavSection,
   NotificationPreferences,
   PermissionKey,
   PostStatus,
+  PublicAuthorSummary,
+  PublicHomePayload,
   RedirectRule,
   RoleDefinition,
   RolePermissionMatrix,
@@ -47,12 +51,16 @@ import { ModerationView } from './components/ModerationView';
 import { CalendarTasksView } from './components/CalendarTasksView';
 import { NotificationCenter } from './components/NotificationCenter';
 import { SiteStudioView } from './components/SiteStudioView';
+import { PublicBlogHome } from './components/PublicBlogHome';
+import { AuthModal, ProfileModal, SettingsModal } from './components/AccountModals';
 
 interface WorkspacePayload {
   posts: BlogPost[];
   categories: Category[];
   tags: TagItem[];
   mediaAssets: MediaAsset[];
+  mediaFolders: MediaFolder[];
+  news: MedicalNewsItem[];
   siteSeo: SiteSeoConfig;
   siteBrand: SiteBrandConfig;
   rolePermissions: RolePermissionMatrix;
@@ -69,8 +77,27 @@ interface WorkspacePayload {
 }
 
 export default function App() {
-  const { firebaseUser, authLoading, authError, signInWithGoogle, logout } = useAuth();
+  const {
+    account,
+    authLoading,
+    authError,
+    clearAuthError,
+    signInWithPassword,
+    registerMember,
+    signInWithGoogle,
+    updateProfile,
+    changePassword,
+    logout,
+  } = useAuth();
 
+  const [viewMode, setViewMode] = useState<'home' | 'admin'>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('view') === 'admin' ? 'admin' : 'home';
+    } catch {
+      return 'home';
+    }
+  });
   const [activeSection, setActiveSection] = useState<NavSection>('overview');
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     try {
@@ -82,6 +109,11 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
 
+  // Public homepage state
+  const [publicData, setPublicData] = useState<PublicHomePayload | null>(null);
+  const [publicLoading, setPublicLoading] = useState(true);
+  const [publicError, setPublicError] = useState<string | null>(null);
+
   // Server-backed workspace state
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -91,6 +123,8 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<TagItem[]>([]);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
+  const [mediaFolders, setMediaFolders] = useState<MediaFolder[]>([]);
+  const [news, setNews] = useState<MedicalNewsItem[]>([]);
   const [siteSeo, setSiteSeo] = useState<SiteSeoConfig>(INITIAL_SITE_SEO);
   const [siteBrand, setSiteBrand] = useState<SiteBrandConfig>(INITIAL_SITE_BRAND);
   const [redirects, setRedirects] = useState<RedirectRule[]>([]);
@@ -114,6 +148,9 @@ export default function App() {
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
   const [selectedSeoPostId, setSelectedSeoPostId] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
   // Debounce timers for high-frequency inline SEO form edits
   const postSyncTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -149,8 +186,29 @@ export default function App() {
     }, 3000);
   }, []);
 
+  const loadPublicHome = useCallback(async () => {
+    setPublicLoading(true);
+    setPublicError(null);
+    try {
+      const res = await fetch('/api/public/home');
+      if (!res.ok) {
+        throw new Error('Site verileri yüklenemedi.');
+      }
+      const data = (await res.json()) as PublicHomePayload;
+      setPublicData(data);
+    } catch (err: any) {
+      setPublicError(err?.message || 'Site verileri alınamadı.');
+    } finally {
+      setPublicLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPublicHome();
+  }, [loadPublicHome]);
+
   const loadWorkspace = useCallback(async () => {
-    if (!firebaseUser) return;
+    if (!account?.isAdmin) return;
     setWorkspaceLoading(true);
     setWorkspaceError(null);
     try {
@@ -159,6 +217,8 @@ export default function App() {
       setCategories(data.categories);
       setTags(data.tags);
       setMediaAssets(data.mediaAssets);
+      setMediaFolders(data.mediaFolders || []);
+      setNews(data.news || []);
       setSiteSeo(data.siteSeo);
       setSiteBrand(data.siteBrand || INITIAL_SITE_BRAND);
       setRolePermissions(data.rolePermissions);
@@ -182,16 +242,19 @@ export default function App() {
     } finally {
       setWorkspaceLoading(false);
     }
-  }, [firebaseUser]);
+  }, [account]);
 
   useEffect(() => {
-    if (firebaseUser) {
+    if (account?.isAdmin) {
       loadWorkspace();
     } else {
       setWorkspaceReady(false);
       setWorkspaceError(null);
+      if (account && viewMode === 'admin') {
+        setViewMode('home');
+      }
     }
-  }, [firebaseUser, loadWorkspace]);
+  }, [account, viewMode, loadWorkspace]);
 
   const persistRequest = useCallback(
     async (fn: () => Promise<unknown>, fallbackError: string) => {
@@ -241,23 +304,387 @@ export default function App() {
     const found = users.find((u) => u.id === currentUserId) ?? users[0];
     if (found) return found;
     return {
-      id: firebaseUser?.uid || 'usr-active',
-      name: firebaseUser?.displayName || 'Editör',
-      email: firebaseUser?.email || '',
-      role: 'admin',
+      id: account?.id || 'acc-admin-noh',
+      name: account?.displayName || 'Noh',
+      email: account?.email || '',
+      role: account?.isAdmin ? 'admin' : 'member',
       status: 'active',
-      avatarUrl: firebaseUser?.photoURL || undefined,
-      department: 'Yayın Yönetimi',
+      avatarUrl: account?.avatarUrl,
+      department: account?.isAdmin ? 'Yönetim Merkezi' : 'Site Üyesi',
       lastActiveAt: 'Az önce',
-      joinedAt: '2026-11-26',
+      joinedAt: new Date().toISOString().slice(0, 10),
       postsPublished: 0,
     };
-  }, [users, currentUserId, firebaseUser]);
+  }, [users, currentUserId, account]);
+
+  const realTrafficSeries = useMemo<DailyTrafficPoint[]>(() => {
+    if (posts.length === 0) return [];
+    const totalViewsAll = posts.reduce((acc, p) => acc + p.views, 0);
+    if (totalViewsAll <= 0) return [];
+
+    const byDate = new Map<string, { totalViews: number; organicViews: number }>();
+    for (const post of posts) {
+      const dateKey = post.publishedAt || post.updatedAt || new Date().toISOString().slice(0, 10);
+      const prev = byDate.get(dateKey) ?? { totalViews: 0, organicViews: 0 };
+      byDate.set(dateKey, {
+        totalViews: prev.totalViews + post.views,
+        organicViews: prev.organicViews + post.organicViews,
+      });
+    }
+
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, agg]) => ({
+        date,
+        label: date.slice(5).split('-').reverse().join('.'),
+        totalViews: agg.totalViews,
+        organicViews: agg.organicViews,
+        uniqueVisitors: Math.round(agg.totalViews * 0.74),
+      }));
+  }, [posts]);
+
+  const handleAddMediaAsset = useCallback(
+    async (asset: MediaAsset) => {
+      const ok = await persistRequest(
+        () =>
+          apiFetch('/api/media', {
+            method: 'POST',
+            body: JSON.stringify(asset),
+          }),
+        'Medya varlığı eklenemedi.'
+      );
+      if (!ok) return;
+      setMediaAssets((prev) => [asset, ...prev.filter((m) => m.id !== asset.id)]);
+      showToast('Medya kütüphaneye eklendi.');
+    },
+    [persistRequest, showToast]
+  );
 
   const permissions =
     rolePermissions[currentUser.role] ?? INITIAL_ROLE_PERMISSIONS.admin;
 
-  // Auth & loading gates
+  const activeBrand = workspaceReady
+    ? siteBrand
+    : publicData?.siteBrand || INITIAL_SITE_BRAND;
+
+  useEffect(() => {
+    if (activeBrand?.brandName) {
+      document.title = activeBrand.tagline
+        ? `${activeBrand.brandName} · ${activeBrand.tagline}`
+        : activeBrand.brandName;
+    }
+    if (activeBrand?.faviconUrl) {
+      let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = activeBrand.faviconUrl;
+    }
+  }, [activeBrand]);
+
+  const handleOpenPublicHome = useCallback(() => {
+    loadPublicHome();
+    setViewMode('home');
+  }, [loadPublicHome]);
+
+  const handleLogoutAll = useCallback(async () => {
+    await logout();
+    setProfileModalOpen(false);
+    setSettingsModalOpen(false);
+    setViewMode('home');
+    showToast('Oturumunuz kapatıldı.');
+  }, [logout, showToast]);
+
+  const handleAuthenticatedAccount = useCallback(
+    (acc: { displayName: string; isAdmin: boolean }) => {
+      if (acc.isAdmin) {
+        setViewMode('admin');
+        showToast(`Hoş geldiniz ${acc.displayName}. Yönetim paneli açılıyor.`);
+      } else {
+        setViewMode('home');
+        showToast(`Hoş geldiniz ${acc.displayName}!`);
+      }
+    },
+    [showToast]
+  );
+
+  const handlePublicSubmitComment = useCallback(
+    async (input: { postId: string; authorName: string; content: string }) => {
+      try {
+        const res = await fetch('/api/public/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return {
+            ok: false,
+            error: data?.error || 'Yorum gönderilemedi.',
+          };
+        }
+        if (data?.comment) {
+          if (data.comment.status === 'approved') {
+            setPublicData((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    comments: [
+                      data.comment,
+                      ...prev.comments.filter((c) => c.id !== data.comment.id),
+                    ],
+                  }
+                : prev
+            );
+          }
+          if (workspaceReady) {
+            setComments((prev) => [
+              data.comment,
+              ...prev.filter((c) => c.id !== data.comment.id),
+            ]);
+          }
+        }
+        return {
+          ok: true,
+          status: data?.comment?.status || 'approved',
+        };
+      } catch {
+        return {
+          ok: false,
+          error: 'Bağlantı hatası nedeniyle yorum gönderilemedi.',
+        };
+      }
+    },
+    [workspaceReady]
+  );
+
+  const handlePublicToggleCommentVisibility = useCallback(
+    async (commentId: string, nextStatus: 'approved' | 'rejected') => {
+      const target = comments.find((c) => c.id === commentId);
+      if (!target) return;
+      const updated = { ...target, status: nextStatus };
+      const ok = await persistRequest(
+        () =>
+          apiFetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+            method: 'PUT',
+            body: JSON.stringify(updated),
+          }),
+        'Yorum görünürlüğü güncellenemedi.'
+      );
+      if (!ok) return;
+
+      setComments((prev) => prev.map((c) => (c.id === commentId ? updated : c)));
+      setPublicData((prev) => {
+        if (!prev) return prev;
+        if (nextStatus === 'approved') {
+          const exists = prev.comments.some((c) => c.id === commentId);
+          return {
+            ...prev,
+            comments: exists
+              ? prev.comments.map((c) =>
+                  c.id === commentId
+                    ? {
+                        id: updated.id,
+                        postId: updated.postId,
+                        authorName: updated.authorName,
+                        content: updated.content,
+                        createdAt: updated.createdAt,
+                        status: 'approved',
+                        moderatorReply: updated.moderatorReply,
+                      }
+                    : c
+                )
+              : [
+                  {
+                    id: updated.id,
+                    postId: updated.postId,
+                    authorName: updated.authorName,
+                    content: updated.content,
+                    createdAt: updated.createdAt,
+                    status: 'approved',
+                    moderatorReply: updated.moderatorReply,
+                  },
+                  ...prev.comments,
+                ],
+          };
+        }
+        return {
+          ...prev,
+          comments: prev.comments.filter((c) => c.id !== commentId),
+        };
+      });
+      showToast(
+        nextStatus === 'approved'
+          ? 'Yorum ziyaretçilere açıldı.'
+          : 'Yorum ziyaretçilerden gizlendi.'
+      );
+    },
+    [comments, persistRequest, showToast]
+  );
+
+  const handlePublicDeleteComment = useCallback(
+    async (commentId: string) => {
+      const ok = await persistRequest(
+        () =>
+          apiFetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+            method: 'DELETE',
+          }),
+        'Yorum silinemedi.'
+      );
+      if (!ok) return;
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      setPublicData((prev) =>
+        prev
+          ? {
+              ...prev,
+              comments: prev.comments.filter((c) => c.id !== commentId),
+            }
+          : prev
+      );
+      showToast('Yorum kalıcı olarak silindi.');
+    },
+    [persistRequest, showToast]
+  );
+
+  // Public Blog Homepage view (also default landing for non-admin users)
+  if (viewMode === 'home' || (account && !account.isAdmin)) {
+    if (!publicData && !workspaceReady && publicLoading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+          Site içeriği yükleniyor...
+        </div>
+      );
+    }
+
+    if (!publicData && !workspaceReady && publicError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-xs dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+              Site İçeriği Yüklenemedi
+            </h2>
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{publicError}</p>
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={loadPublicHome}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+              >
+                Tekrar Dene
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const effectiveAuthors: PublicAuthorSummary[] = workspaceReady
+      ? users.map((u) => ({
+          id: u.id,
+          name: u.name,
+          role: u.role,
+          avatarUrl: u.avatarUrl,
+          department: u.department,
+        }))
+      : publicData?.authors || [];
+
+    const effectivePosts = workspaceReady
+      ? posts.filter((p) => p.status === 'published')
+      : publicData?.posts || [];
+
+    const effectiveCategories = workspaceReady
+      ? categories
+      : publicData?.categories || [];
+
+    const effectiveDoctors = workspaceReady
+      ? doctors.filter((d) => d.status === 'active')
+      : publicData?.doctors || [];
+
+    const effectiveComments = workspaceReady
+      ? permissions.moderation_resolve
+        ? comments
+        : comments.filter((c) => c.status === 'approved')
+      : publicData?.comments || [];
+
+    const effectiveNews = workspaceReady ? news : publicData?.news || [];
+
+    return (
+      <>
+        <PublicBlogHome
+          siteBrand={activeBrand}
+          posts={effectivePosts}
+          categories={effectiveCategories}
+          doctors={effectiveDoctors}
+          authors={effectiveAuthors}
+          comments={effectiveComments}
+          news={effectiveNews}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode((d) => !d)}
+          account={account}
+          canModerate={Boolean(account?.isAdmin && workspaceReady && permissions.moderation_resolve)}
+          onOpenLogin={() => setAuthModalOpen(true)}
+          onOpenProfile={() => setProfileModalOpen(true)}
+          onOpenSettings={() => setSettingsModalOpen(true)}
+          onOpenAdmin={() => {
+            if (account?.isAdmin) {
+              setViewMode('admin');
+            }
+          }}
+          onLogout={handleLogoutAll}
+          onSubmitComment={handlePublicSubmitComment}
+          onToggleCommentVisibility={handlePublicToggleCommentVisibility}
+          onDeleteComment={handlePublicDeleteComment}
+        />
+
+        <AuthModal
+          open={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          authError={authError}
+          onClearError={clearAuthError}
+          onSignInPassword={signInWithPassword}
+          onRegisterMember={registerMember}
+          onSignInGoogle={signInWithGoogle}
+          onAuthenticated={handleAuthenticatedAccount}
+          primaryColor={activeBrand.primaryColor}
+        />
+
+        {account && (
+          <>
+            <ProfileModal
+              open={profileModalOpen}
+              onClose={() => setProfileModalOpen(false)}
+              account={account}
+              onSaveProfile={updateProfile}
+              primaryColor={activeBrand.primaryColor}
+            />
+            <SettingsModal
+              open={settingsModalOpen}
+              onClose={() => setSettingsModalOpen(false)}
+              account={account}
+              darkMode={darkMode}
+              onToggleDarkMode={() => setDarkMode((d) => !d)}
+              onChangePassword={changePassword}
+              primaryColor={activeBrand.primaryColor}
+            />
+          </>
+        )}
+
+        {toastMessage && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed right-5 bottom-5 z-50 rounded-xl border border-slate-200 bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-lg dark:border-slate-700 dark:bg-slate-100 dark:text-slate-900"
+          >
+            {toastMessage}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Auth & loading gates for Admin Panel
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
@@ -266,12 +693,25 @@ export default function App() {
     );
   }
 
-  if (!firebaseUser) {
+  if (!account || !account.isAdmin) {
     return (
       <LoginScreen
-        onSignIn={signInWithGoogle}
+        onSignInPassword={async (id, pass) => {
+          const acc = await signInWithPassword(id, pass);
+          if (acc) handleAuthenticatedAccount(acc);
+          return acc;
+        }}
+        onSignInGoogle={async () => {
+          const acc = await signInWithGoogle();
+          if (acc) {
+            setViewMode('home');
+            showToast('Google girişinizle anasayfaya yönlendirildiniz.');
+          }
+          return acc;
+        }}
         error={authError}
         loading={authLoading}
+        onBackToHome={handleOpenPublicHome}
       />
     );
   }
@@ -552,6 +992,7 @@ export default function App() {
         onCloseMobile={() => setMobileMenuOpen(false)}
         brandName={siteBrand.brandName}
         logoUrl={darkMode ? (siteBrand.logoDarkUrl || siteBrand.logoLightUrl) : siteBrand.logoLightUrl}
+        onOpenPublicHome={handleOpenPublicHome}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -600,6 +1041,7 @@ export default function App() {
           onNavigateFromNotification={(n) => setActiveSection(n.targetSection)}
           onOpenAllNotifications={() => setActiveSection('notifications')}
           currentUser={currentUser}
+          account={account}
           allUsers={users}
           roles={roles}
           onSwitchUser={(id) => {
@@ -607,7 +1049,10 @@ export default function App() {
             const switched = users.find((u) => u.id === id);
             if (switched) showToast(`Görünüm önizleme: ${switched.name}`);
           }}
-          onLogout={logout}
+          onLogout={handleLogoutAll}
+          onOpenPublicHome={handleOpenPublicHome}
+          onOpenProfile={() => setProfileModalOpen(true)}
+          onOpenSettings={() => setSettingsModalOpen(true)}
         />
 
         <main className="mx-auto w-full max-w-[1440px] flex-1 p-4 sm:p-6 lg:p-8">
@@ -618,7 +1063,7 @@ export default function App() {
               users={users}
               comments={comments}
               tasks={tasks}
-              trafficSeries={TRAFFIC_SERIES_30D}
+              trafficSeries={realTrafficSeries}
               onNavigate={setActiveSection}
               onEditPost={(post) => {
                 setEditingPost(post);
@@ -719,32 +1164,18 @@ export default function App() {
           {activeSection === 'media' && (
             <MediaLibraryView
               mediaAssets={mediaAssets}
+              mediaFolders={mediaFolders}
               currentUserName={currentUser.name}
-              onAddMedia={async (asset) => {
-                const ok = await persistRequest(
-                  () =>
-                    apiFetch('/api/media', {
-                      method: 'POST',
-                      body: JSON.stringify(asset),
-                    }),
-                  'Medya varlığı eklenemedi.'
-                );
-                if (!ok) return;
-                setMediaAssets((prev) => [asset, ...prev]);
-                showToast('Yeni görsel medya kütüphanesine eklendi.');
-              }}
-              onUpdateAltText={async (id, altText) => {
-                const target = mediaAssets.find((m) => m.id === id);
-                if (!target) return;
-                const updated = { ...target, altText };
-                setMediaAssets((prev) => prev.map((m) => (m.id === id ? updated : m)));
+              onAddMedia={handleAddMediaAsset}
+              onUpdateMedia={async (updated) => {
+                setMediaAssets((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
                 await persistRequest(
                   () =>
                     apiFetch('/api/media', {
                       method: 'POST',
                       body: JSON.stringify(updated),
                     }),
-                  'Alt metin güncellenemedi.'
+                  'Medya bilgileri güncellenemedi.'
                 );
               }}
               onDeleteMedia={async (id) => {
@@ -758,6 +1189,39 @@ export default function App() {
                 if (!ok) return;
                 setMediaAssets((prev) => prev.filter((m) => m.id !== id));
                 showToast('Medya varlığı kaldırıldı.');
+              }}
+              onSaveFolder={async (folder) => {
+                const isNew = !mediaFolders.some((f) => f.id === folder.id);
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch('/api/media/folders', {
+                      method: 'POST',
+                      body: JSON.stringify(folder),
+                    }),
+                  'Klasör kaydedilemedi.'
+                );
+                if (!ok) return;
+                setMediaFolders((prev) =>
+                  isNew
+                    ? [...prev, folder]
+                    : prev.map((f) => (f.id === folder.id ? folder : f))
+                );
+                showToast(isNew ? `"${folder.name}" klasörü oluşturuldu.` : `"${folder.name}" klasörü güncellendi.`);
+              }}
+              onDeleteFolder={async (id) => {
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch(`/api/media/folders/${encodeURIComponent(id)}`, {
+                      method: 'DELETE',
+                    }),
+                  'Klasör silinemedi.'
+                );
+                if (!ok) return;
+                setMediaFolders((prev) => prev.filter((f) => f.id !== id));
+                setMediaAssets((prev) =>
+                  prev.map((m) => (m.folderId === id ? { ...m, folderId: undefined } : m))
+                );
+                showToast('Klasör silindi.');
               }}
             />
           )}
@@ -821,7 +1285,7 @@ export default function App() {
               posts={posts}
               categories={categories}
               users={users}
-              trafficSeries={TRAFFIC_SERIES_30D}
+              trafficSeries={realTrafficSeries}
               canExport={permissions.analytics_export}
             />
           )}
@@ -845,6 +1309,36 @@ export default function App() {
                 if (!ok) return;
                 setUsers((prev) => [...prev, u]);
                 showToast(`${u.name} ekibe eklendi.`);
+              }}
+              onUpdateUser={async (updated) => {
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch('/api/users', {
+                      method: 'POST',
+                      body: JSON.stringify(updated),
+                    }),
+                  'Kullanıcı bilgileri güncellenemedi.'
+                );
+                if (!ok) return;
+                setUsers((prev) =>
+                  prev.map((u) => (u.id === updated.id ? updated : u))
+                );
+                showToast(`${updated.name} bilgileri güncellendi.`);
+              }}
+              onDeleteUser={async (userId) => {
+                const target = users.find((u) => u.id === userId);
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch(`/api/users/${encodeURIComponent(userId)}`, {
+                      method: 'DELETE',
+                    }),
+                  'Kullanıcı silinemedi.'
+                );
+                if (!ok) return;
+                setUsers((prev) => prev.filter((u) => u.id !== userId));
+                showToast(
+                  target ? `${target.name} kullanıcı listesinden silindi.` : 'Kullanıcı silindi.'
+                );
               }}
               onUpdateUserRole={async (userId, role) => {
                 const target = users.find((u) => u.id === userId);
@@ -1035,6 +1529,7 @@ export default function App() {
               roles={roles}
               users={users}
               doctors={doctors}
+              news={news}
               canManageBrand={permissions.seo_manage || permissions.users_manage}
               canManageRoles={permissions.users_manage}
               canManageDoctors={permissions.users_manage || permissions.posts_publish}
@@ -1060,18 +1555,7 @@ export default function App() {
                 showToast(`"${brand.brandName}" konsept ve görsel ayarları güncellendi.`);
                 return true;
               }}
-              onAddMedia={async (asset) => {
-                const ok = await persistRequest(
-                  () =>
-                    apiFetch('/api/media', {
-                      method: 'POST',
-                      body: JSON.stringify(asset),
-                    }),
-                  'Görsel medya kütüphanesine eklenemedi.'
-                );
-                if (!ok) return;
-                setMediaAssets((prev) => [asset, ...prev]);
-              }}
+              onAddMedia={handleAddMediaAsset}
               onSaveRole={async (roleDef) => {
                 const ok = await persistRequest(
                   () =>
@@ -1146,6 +1630,37 @@ export default function App() {
                 showToast('Doktor kaydı silindi.');
                 return true;
               }}
+              onSaveNews={async (item, isNew) => {
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch('/api/news', {
+                      method: 'POST',
+                      body: JSON.stringify(item),
+                    }),
+                  'Haber kaydedilemedi.'
+                );
+                if (!ok) return false;
+                setNews((prev) =>
+                  isNew
+                    ? [item, ...prev]
+                    : prev.map((n) => (n.id === item.id ? item : n))
+                );
+                showToast(isNew ? 'Yeni haber eklendi.' : 'Haber güncellendi.');
+                return true;
+              }}
+              onDeleteNews={async (id) => {
+                const ok = await persistRequest(
+                  () =>
+                    apiFetch(`/api/news/${encodeURIComponent(id)}`, {
+                      method: 'DELETE',
+                    }),
+                  'Haber silinemedi.'
+                );
+                if (!ok) return false;
+                setNews((prev) => prev.filter((n) => n.id !== id));
+                showToast('Haber silindi.');
+                return true;
+              }}
             />
           )}
         </main>
@@ -1158,14 +1673,38 @@ export default function App() {
           tags={tags}
           users={users}
           mediaAssets={mediaAssets}
+          mediaFolders={mediaFolders}
           currentUserId={currentUser.id}
+          currentUserName={currentUser.name}
           canPublish={permissions.posts_publish}
+          onAddMedia={handleAddMediaAsset}
           onSave={handleSavePost}
           onClose={() => {
             setEditorOpen(false);
             setEditingPost(null);
           }}
         />
+      )}
+
+      {account && (
+        <>
+          <ProfileModal
+            open={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+            account={account}
+            onSaveProfile={updateProfile}
+            primaryColor={activeBrand.primaryColor}
+          />
+          <SettingsModal
+            open={settingsModalOpen}
+            onClose={() => setSettingsModalOpen(false)}
+            account={account}
+            darkMode={darkMode}
+            onToggleDarkMode={() => setDarkMode((d) => !d)}
+            onChangePassword={changePassword}
+            primaryColor={activeBrand.primaryColor}
+          />
+        </>
       )}
 
       {toastMessage && (

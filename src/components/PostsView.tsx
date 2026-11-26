@@ -215,10 +215,10 @@ export const PostsView: React.FC<PostsViewProps> = ({
         {filteredPosts.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">
-              Kriterlere uygun blog yazısı bulunamadı
+              Şu anda Herhangi bir veri bulunamadı
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Arama terimini temizleyin veya yeni bir yazı oluşturarak editoryal akışı başlatın.
+              Yeni bir blog yazısı oluşturarak yayın akışınızı başlatabilirsiniz.
             </p>
             <button
               type="button"

@@ -129,7 +129,7 @@ export const SeoModuleView: React.FC<SeoModuleViewProps> = ({
       statusCode: newCode,
       hits: 0,
       active: true,
-      createdAt: '2026-11-26',
+      createdAt: new Date().toISOString().slice(0, 10),
     });
     setNewSource('');
     setNewTarget('');
@@ -179,6 +179,12 @@ export const SeoModuleView: React.FC<SeoModuleViewProps> = ({
       </div>
 
       {/* 1. Post-Level SEO & SERP Preview */}
+      {subTab === 'post_audit' && (!activePost || !audit) && (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          Şu anda Herhangi bir veri bulunamadı
+        </div>
+      )}
+
       {subTab === 'post_audit' && activePost && audit && (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
           <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 xl:col-span-3 dark:border-slate-800 dark:bg-slate-900">
@@ -822,48 +828,56 @@ export const SeoModuleView: React.FC<SeoModuleViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {redirects.map((rule) => (
-                    <tr key={rule.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                      <td className="px-5 py-3 font-mono text-xs text-slate-900 dark:text-slate-100">
-                        {rule.sourcePath}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">
-                        {rule.targetPath}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
-                        {rule.statusCode}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
-                        {formatNumberTR(rule.hits)}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        <button
-                          type="button"
-                          disabled={!canManageSeo}
-                          onClick={() => onToggleRedirect(rule.id)}
-                          className={`font-medium ${
-                            rule.active
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-slate-400'
-                          }`}
-                        >
-                          {rule.active ? 'Etkin' : 'Pasif'}
-                        </button>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        {canManageSeo && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteRedirect(rule.id)}
-                            aria-label="Yönlendirmeyi sil"
-                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
+                  {redirects.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                        Şu anda Herhangi bir veri bulunamadı
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    redirects.map((rule) => (
+                      <tr key={rule.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="px-5 py-3 font-mono text-xs text-slate-900 dark:text-slate-100">
+                          {rule.sourcePath}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">
+                          {rule.targetPath}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
+                          {rule.statusCode}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
+                          {formatNumberTR(rule.hits)}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          <button
+                            type="button"
+                            disabled={!canManageSeo}
+                            onClick={() => onToggleRedirect(rule.id)}
+                            className={`font-medium ${
+                              rule.active
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {rule.active ? 'Etkin' : 'Pasif'}
+                          </button>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          {canManageSeo && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteRedirect(rule.id)}
+                              aria-label="Yönlendirmeyi sil"
+                              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -872,14 +886,14 @@ export const SeoModuleView: React.FC<SeoModuleViewProps> = ({
       )}
 
       {/* 5. Google Search Grounding Research */}
-      {subTab === 'search_research' && activePost && (
+      {subTab === 'search_research' && (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="xl:col-span-2">
             <SearchResearchPanel
-              key={activePost.id}
-              defaultQuery={activePost.seo.focusKeyword || activePost.title}
-              focusKeyword={activePost.seo.focusKeyword}
-              postTitle={activePost.title}
+              key={activePost?.id || 'general'}
+              defaultQuery={activePost ? activePost.seo.focusKeyword || activePost.title : ''}
+              focusKeyword={activePost?.seo.focusKeyword || ''}
+              postTitle={activePost?.title || ''}
               mode="seo_insights"
             />
           </div>
@@ -887,30 +901,38 @@ export const SeoModuleView: React.FC<SeoModuleViewProps> = ({
             <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
               Seçili Yazı Bağlamı
             </h3>
-            <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
-              {activePost.title}
-            </p>
-            <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
-              <p>
-                Odak Kelime:{' '}
-                <span className="font-medium text-slate-800 dark:text-slate-200">
-                  {activePost.seo.focusKeyword || 'Belirtilmemiş'}
-                </span>
+            {activePost ? (
+              <>
+                <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                  {activePost.title}
+                </p>
+                <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p>
+                    Odak Kelime:{' '}
+                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                      {activePost.seo.focusKeyword || 'Belirtilmemiş'}
+                    </span>
+                  </p>
+                  <p className="font-mono text-[11px]">/{activePost.slug}</p>
+                </div>
+                <select
+                  value={activePost.id}
+                  onChange={(e) => onSelectPostId(e.target.value)}
+                  aria-label="Araştırma yazısı seç"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  {posts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Şu anda Herhangi bir veri bulunamadı
               </p>
-              <p className="font-mono text-[11px]">/{activePost.slug}</p>
-            </div>
-            <select
-              value={activePost.id}
-              onChange={(e) => onSelectPostId(e.target.value)}
-              aria-label="Araştırma yazısı seç"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            >
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
+            )}
           </aside>
         </div>
       )}

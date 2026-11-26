@@ -63,6 +63,13 @@ export interface TagItem {
   slug: string;
 }
 
+export interface MediaFolder {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: string;
+}
+
 export interface MediaAsset {
   id: string;
   title: string;
@@ -73,6 +80,7 @@ export interface MediaAsset {
   dimensions: string;
   uploadedAt: string;
   uploadedBy: string;
+  folderId?: string;
 }
 
 export interface RedirectRule {
@@ -248,4 +256,57 @@ export interface DailyTrafficPoint {
   totalViews: number;
   organicViews: number;
   uniqueVisitors: number;
+}
+
+export interface MedicalNewsItem {
+  id: string;
+  title: string;
+  summary: string;
+  source: string;
+  publishedAt: string;
+  categoryLabel: string;
+  imageUrl: string;
+  doctorName: string;
+}
+
+export interface PublicAuthorSummary {
+  id: string;
+  name: string;
+  role: UserRole;
+  avatarUrl?: string;
+  department: string;
+}
+
+export interface PublicCommentItem {
+  id: string;
+  postId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+  status: ModerationStatus;
+  moderatorReply?: string;
+}
+
+export interface PublicHomePayload {
+  siteBrand: SiteBrandConfig;
+  siteName: string;
+  posts: BlogPost[];
+  categories: Category[];
+  doctors: DoctorProfile[];
+  authors: PublicAuthorSummary[];
+  comments: PublicCommentItem[];
+  news: MedicalNewsItem[];
+}
+
+export interface AuthAccountProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  avatarUrl?: string;
+  bio?: string;
+  role: 'admin' | 'member';
+  isAdmin: boolean;
+  provider: 'password' | 'google';
+  canChangePassword: boolean;
 }

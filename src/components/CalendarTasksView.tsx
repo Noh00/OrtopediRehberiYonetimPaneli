@@ -71,10 +71,12 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
   onDeleteTask,
   onEditPost,
 }) => {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
   const [viewMode, setViewMode] = useState<'kanban' | 'calendar'>('calendar');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(10); // 0-indexed: 10 = Kasım 2026
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TeamTask | null>(null);
@@ -82,8 +84,8 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
   const [taskDesc, setTaskDesc] = useState('');
   const [taskPriority, setTaskPriority] = useState<TaskPriority>('medium');
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('todo');
-  const [taskAssignee, setTaskAssignee] = useState<string>(users[0]?.id ?? 'usr-1');
-  const [taskDue, setTaskDue] = useState('2026-11-28');
+  const [taskAssignee, setTaskAssignee] = useState<string>(users[0]?.id ?? '');
+  const [taskDue, setTaskDue] = useState(todayStr);
   const [taskPostId, setTaskPostId] = useState<string>('');
 
   const filteredTasks = useMemo(() => {
@@ -92,13 +94,13 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
     );
   }, [tasks, assigneeFilter]);
 
-  const openCreateModal = (defaultDate = '2026-11-28', defaultStatus: TaskStatus = 'todo') => {
+  const openCreateModal = (defaultDate = todayStr, defaultStatus: TaskStatus = 'todo') => {
     setEditingTask(null);
     setTaskTitle('');
     setTaskDesc('');
     setTaskPriority('medium');
     setTaskStatus(defaultStatus);
-    setTaskAssignee(users[0]?.id ?? 'usr-1');
+    setTaskAssignee(users[0]?.id ?? '');
     setTaskDue(defaultDate);
     setTaskPostId('');
     setModalOpen(true);
@@ -141,7 +143,7 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
         dueDate: taskDue,
         linkedPostId: taskPostId || undefined,
         tags: ['Ekip'],
-        createdAt: '2026-11-26',
+        createdAt: todayStr,
       });
     }
     setModalOpen(false);
@@ -252,12 +254,13 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCurrentYear(2026);
-                  setCurrentMonth(10);
+                  const d = new Date();
+                  setCurrentYear(d.getFullYear());
+                  setCurrentMonth(d.getMonth());
                 }}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Bugün (26 Kas)
+                Bugün
               </button>
               <button
                 type="button"
@@ -301,7 +304,7 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
                 (p) => (p.scheduledFor || p.publishedAt) === cell.dateStr
               );
               const dayTasks = filteredTasks.filter((t) => t.dueDate === cell.dateStr);
-              const isToday = cell.dateStr === '2026-11-26';
+              const isToday = cell.dateStr === todayStr;
 
               return (
                 <div
@@ -387,7 +390,7 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
                 <div className="space-y-3">
                   {colTasks.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400 dark:border-slate-700">
-                      Bu aşamada görev yok
+                      Şu anda Herhangi bir veri bulunamadı
                     </div>
                   ) : (
                     colTasks.map((task) => {
@@ -492,7 +495,7 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
                 {canManage && (
                   <button
                     type="button"
-                    onClick={() => openCreateModal('2026-11-28', col.id)}
+                    onClick={() => openCreateModal(todayStr, col.id)}
                     className="mt-3 flex items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-500 hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -559,6 +562,7 @@ export const CalendarTasksView: React.FC<CalendarTasksViewProps> = ({
                     onChange={(e) => setTaskAssignee(e.target.value)}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
+                    <option value="">Atanmamış</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}

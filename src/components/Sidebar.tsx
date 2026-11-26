@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   CalendarClock,
+  ExternalLink,
   FileText,
   FolderTree,
   Globe,
@@ -29,6 +30,7 @@ interface SidebarProps {
   onCloseMobile: () => void;
   brandName?: string;
   logoUrl?: string;
+  onOpenPublicHome?: () => void;
 }
 
 interface NavItemConfig {
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   brandName,
   logoUrl,
+  onOpenPublicHome,
 }) => {
   const groups: { title: string; items: NavItemConfig[] }[] = [
     {
@@ -180,7 +183,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      <div className="border-t border-slate-200 pt-4 dark:border-slate-800">
+      <div className="space-y-1.5 border-t border-slate-200 pt-4 dark:border-slate-800">
+        {onOpenPublicHome && (
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobile();
+              onOpenPublicHome();
+            }}
+            className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+          >
+            <span className="flex items-center gap-2.5">
+              <ExternalLink className="h-4 w-4 shrink-0" />
+              <span>Siteye Git (Anasayfa)</span>
+            </span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onToggleDarkMode}

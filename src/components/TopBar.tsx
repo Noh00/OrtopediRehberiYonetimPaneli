@@ -1,11 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, Plus, Search } from 'lucide-react';
+import {
+  Bell,
+  ChevronDown,
+  ExternalLink,
+  LogOut,
+  Menu,
+  Plus,
+  Search,
+  Settings,
+  User,
+} from 'lucide-react';
 import {
   AppNotification,
+  AuthAccountProfile,
   NavSection,
   RoleDefinition,
   TeamUser,
-  UserRole,
 } from '../types/admin';
 import { SafeImage } from './SafeImage';
 
@@ -44,10 +54,14 @@ interface TopBarProps {
   onNavigateFromNotification: (n: AppNotification) => void;
   onOpenAllNotifications: () => void;
   currentUser: TeamUser;
+  account?: AuthAccountProfile | null;
   allUsers: TeamUser[];
   roles?: RoleDefinition[];
   onSwitchUser: (userId: string) => void;
   onLogout: () => void;
+  onOpenPublicHome?: () => void;
+  onOpenProfile?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -62,13 +76,15 @@ export const TopBar: React.FC<TopBarProps> = ({
   onNavigateFromNotification,
   onOpenAllNotifications,
   currentUser,
-  allUsers,
-  roles,
-  onSwitchUser,
+  account,
   onLogout,
+  onOpenPublicHome,
+  onOpenProfile,
+  onOpenSettings,
 }) => {
-  const resolveRoleLabel = (roleKey: UserRole) =>
-    roles?.find((r) => r.key === roleKey)?.name || ROLE_LABELS[roleKey] || roleKey;
+  const displayName = account?.displayName || currentUser.name;
+  const displayAvatar = account?.avatarUrl || currentUser.avatarUrl;
+  const displayUsername = account?.username || 'Noh';
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -128,6 +144,18 @@ export const TopBar: React.FC<TopBarProps> = ({
             />
           </div>
 
+          {onOpenPublicHome && (
+            <button
+              type="button"
+              onClick={onOpenPublicHome}
+              title="Canlı site anasayfasını görüntüle"
+              className="hidden h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900 sm:inline-flex dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Siteye Git</span>
+            </button>
+          )}
+
           <div className="relative" ref={notifRef}>
             <button
               type="button"
@@ -160,37 +188,43 @@ export const TopBar: React.FC<TopBarProps> = ({
                   )}
                 </div>
                 <div className="max-h-80 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
-                  {notifications.slice(0, 5).map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        onMarkNotificationRead(item.id);
-                        onNavigateFromNotification(item);
-                        setNotifOpen(false);
-                      }}
-                      className={`block w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${
-                        !item.read ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                          {item.title}
-                        </span>
-                        <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
-                          {item.createdAt}
-                        </span>
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
-                        {item.message}
-                      </p>
-                      {!item.read && (
-                        <span className="mt-1.5 inline-block text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                          Okunmadı · İncele
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                      Şu anda Herhangi bir veri bulunamadı
+                    </div>
+                  ) : (
+                    notifications.slice(0, 5).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          onMarkNotificationRead(item.id);
+                          onNavigateFromNotification(item);
+                          setNotifOpen(false);
+                        }}
+                        className={`block w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${
+                          !item.read ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                            {item.title}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+                            {item.createdAt}
+                          </span>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">
+                          {item.message}
+                        </p>
+                        {!item.read && (
+                          <span className="mt-1.5 inline-block text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                            Okunmadı · İncele
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
                 </div>
                 <div className="border-t border-slate-200 px-4 py-2.5 text-center dark:border-slate-800">
                   <button
@@ -215,73 +249,89 @@ export const TopBar: React.FC<TopBarProps> = ({
               className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
             >
               <SafeImage
-                src={currentUser.avatarUrl}
-                alt={currentUser.name}
-                fallbackLabel={currentUser.name}
+                src={displayAvatar}
+                alt={displayName}
+                fallbackLabel={displayName}
                 isAvatar
-                className="h-6 w-6 rounded-md object-cover"
+                className="h-6 w-6 rounded-full object-cover"
               />
               <div className="hidden text-left sm:block">
                 <p className="max-w-[110px] truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  {currentUser.name}
+                  {displayName}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {resolveRoleLabel(currentUser.role)}
+                  Tek Yönetici
                 </p>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
 
             {userMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-800 dark:bg-slate-900">
-                <p className="px-2.5 py-1.5 text-xs font-medium text-slate-400 dark:text-slate-500">
-                  Aktif Rolü Değiştir (Yetki Testi)
-                </p>
-                <div className="space-y-1">
-                  {allUsers.map((u) => {
-                    const selected = u.id === currentUser.id;
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => {
-                          onSwitchUser(u.id);
-                          setUserMenuOpen(false);
-                        }}
-                        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                          selected
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <SafeImage
-                          src={u.avatarUrl}
-                          alt={u.name}
-                          fallbackLabel={u.name}
-                          isAvatar
-                          className="h-7 w-7 shrink-0 rounded-md object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold">{u.name}</p>
-                          <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                            {resolveRoleLabel(u.role)}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
+              <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                <div className="border-b border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
+                  <p className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                    {displayName}
+                  </p>
+                  <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                    @{displayUsername} · Yönetici Hesabı
+                  </p>
                 </div>
-                <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+
+                <div className="space-y-0.5 p-1.5">
+                  {onOpenProfile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onOpenProfile();
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <User className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Profil</span>
+                    </button>
+                  )}
+
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onOpenSettings();
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <Settings className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Ayarlar (Şifre Değiştir)</span>
+                    </button>
+                  )}
+
+                  {onOpenPublicHome && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onOpenPublicHome();
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Site Anasayfasına Git</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 p-1.5 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => {
                       setUserMenuOpen(false);
                       onLogout();
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                   >
                     <LogOut className="h-3.5 w-3.5" />
-                    <span>Oturumu Kapat</span>
+                    <span>Çıkış Yap</span>
                   </button>
                 </div>
               </div>

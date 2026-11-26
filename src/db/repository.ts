@@ -1,11 +1,15 @@
-import { desc, eq } from 'drizzle-orm';
+import crypto from 'crypto';
+import { desc, eq, or } from 'drizzle-orm';
 import { db } from './index.ts';
 import {
+  authAccounts,
   categories,
   comments,
   customRoles,
   doctors,
   mediaAssets,
+  mediaFolders,
+  medicalNews,
   notifications,
   posts,
   redirects,
@@ -14,32 +18,30 @@ import {
   tasks,
   users,
 } from './schema.ts';
+import { hashPassword, verifyPassword } from '../lib/session.ts';
 import {
-  INITIAL_CATEGORIES,
-  INITIAL_COMMENTS,
-  INITIAL_DOCTORS,
   INITIAL_MEDIA,
   INITIAL_NOTIFICATION_PREFS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_POSTS,
-  INITIAL_REDIRECTS,
   INITIAL_ROLE_PERMISSIONS,
   INITIAL_ROLES,
   INITIAL_SITE_BRAND,
   INITIAL_SITE_SEO,
   INITIAL_SPAM_CONFIG,
-  INITIAL_TAGS,
-  INITIAL_TASKS,
-  INITIAL_USERS,
 } from '../data/initialData.ts';
 import type {
   AppNotification,
+  AuthAccountProfile,
   BlogPost,
   Category,
   DoctorProfile,
   MediaAsset,
+  MediaFolder,
+  MedicalNewsItem,
   ModerationComment,
   NotificationPreferences,
+  PublicAuthorSummary,
+  PublicCommentItem,
+  PublicHomePayload,
   RedirectRule,
   RoleDefinition,
   RolePermissionMatrix,
@@ -52,7 +54,8 @@ import type {
   UserRole,
 } from '../types/admin.ts';
 
-const PRIMARY_ADMIN_EMAIL = 'ozelereglianadoluhastanesi@gmail.com';
+const INITIAL_ADMIN_SCRYPT_HASH =
+  '940473c7aece8f97e42f89080c1cf06b:084e948b3860136b2774dbbb39c7e8fb6ad5af9b777ea67cddf87fe9027ea089d5c89415affa766aae1f32d19a151ff4fe000d298a23ac225ed8a2d7a23a4bc0';
 
 export async function ensureWorkspaceSeeded(): Promise<void> {
   try {
@@ -88,153 +91,40 @@ export async function ensureWorkspaceSeeded(): Promise<void> {
       }
     }
 
-    const existingDoctors = await db.select().from(doctors).limit(1);
-    if (existingDoctors.length === 0) {
-      for (const d of INITIAL_DOCTORS) {
-        await db
-          .insert(doctors)
-          .values({
-            id: d.id,
-            fullName: d.fullName,
-            title: d.title,
-            specialty: d.specialty,
-            licenseNo: d.licenseNo,
-            department: d.department,
-            bio: d.bio,
-            avatarUrl: d.avatarUrl,
-            email: d.email,
-            phone: d.phone,
-            location: d.location,
-            languages: d.languages,
-            availableDays: d.availableDays,
-            featured: d.featured,
-            status: d.status,
-            updatedAt: d.updatedAt,
-          })
-          .onConflictDoNothing();
-      }
+    // Ensure the single administrator profile ('Noh') exists in auth_accounts
+    const existingAdmin = await db
+      .select({ id: authAccounts.id })
+      .from(authAccounts)
+      .where(eq(authAccounts.isAdmin, true))
+      .limit(1);
+
+    if (existingAdmin.length === 0) {
+      await db
+        .insert(authAccounts)
+        .values({
+          id: 'acc-admin-noh',
+          username: 'noh',
+          displayUsername: 'Noh',
+          email: 'noh@yonetim.local',
+          displayName: 'Noh',
+          avatarUrl: null,
+          bio: 'Tek Yetkili Site Yöneticisi',
+          role: 'admin',
+          isAdmin: true,
+          passwordHash: INITIAL_ADMIN_SCRYPT_HASH,
+          firebaseUid: null,
+          provider: 'password',
+        })
+        .onConflictDoNothing();
     }
 
     if (existingSettings.length > 0) {
       return;
     }
 
-    for (const u of INITIAL_USERS) {
-      await db
-        .insert(users)
-        .values({
-          uid: `seed-${u.id}`,
-          email: u.email,
-          name: u.name,
-          role: u.role,
-          status: u.status,
-          department: u.department,
-          avatarUrl: u.avatarUrl || null,
-          postsPublished: u.postsPublished,
-          lastActiveAt: u.lastActiveAt,
-          joinedAt: u.joinedAt,
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const c of INITIAL_CATEGORIES) {
-      await db.insert(categories).values(c).onConflictDoNothing();
-    }
-
-    for (const t of INITIAL_TAGS) {
-      await db.insert(tags).values(t).onConflictDoNothing();
-    }
-
+    // Seed visual assets once on a brand new empty database (excluded from fake data purge)
     for (const m of INITIAL_MEDIA) {
       await db.insert(mediaAssets).values(m).onConflictDoNothing();
-    }
-
-    for (const p of INITIAL_POSTS) {
-      await db
-        .insert(posts)
-        .values({
-          id: p.id,
-          title: p.title,
-          slug: p.slug,
-          excerpt: p.excerpt,
-          content: p.content,
-          categoryId: p.categoryId,
-          tags: p.tags,
-          authorId: p.authorId,
-          status: p.status,
-          coverImage: p.coverImage,
-          coverAlt: p.coverAlt,
-          publishedAt: p.publishedAt,
-          scheduledFor: p.scheduledFor || null,
-          updatedAt: p.updatedAt,
-          readTimeMin: p.readTimeMin,
-          views: p.views,
-          organicViews: p.organicViews,
-          avgReadDurationSec: p.avgReadDurationSec,
-          bounceRate: p.bounceRate,
-          commentsCount: p.commentsCount,
-          featured: p.featured,
-          seo: p.seo,
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const r of INITIAL_REDIRECTS) {
-      await db.insert(redirects).values(r).onConflictDoNothing();
-    }
-
-    for (const cm of INITIAL_COMMENTS) {
-      await db
-        .insert(comments)
-        .values({
-          id: cm.id,
-          postId: cm.postId,
-          authorName: cm.authorName,
-          authorEmail: cm.authorEmail,
-          authorIp: cm.authorIp,
-          content: cm.content,
-          createdAt: cm.createdAt,
-          status: cm.status,
-          reportReason: cm.reportReason || null,
-          flaggedWords: cm.flaggedWords,
-          moderatorReply: cm.moderatorReply || null,
-          isBlockedUser: Boolean(cm.isBlockedUser),
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const tk of INITIAL_TASKS) {
-      await db
-        .insert(tasks)
-        .values({
-          id: tk.id,
-          title: tk.title,
-          description: tk.description,
-          status: tk.status,
-          priority: tk.priority,
-          assigneeId: tk.assigneeId,
-          dueDate: tk.dueDate,
-          linkedPostId: tk.linkedPostId || null,
-          tags: tk.tags,
-          createdAt: tk.createdAt,
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const nt of INITIAL_NOTIFICATIONS) {
-      await db
-        .insert(notifications)
-        .values({
-          id: nt.id,
-          title: nt.title,
-          message: nt.message,
-          category: nt.category,
-          createdAt: nt.createdAt,
-          read: nt.read,
-          targetSection: nt.targetSection,
-          targetEntityId: nt.targetEntityId || null,
-        })
-        .onConflictDoNothing();
     }
   } catch (error) {
     console.error('Database seed failed:', error);
@@ -295,11 +185,9 @@ export async function getOrCreateDbUser(input: {
       : [];
 
     const initialRole: UserRole =
-      input.email.toLowerCase() === PRIMARY_ADMIN_EMAIL
-        ? 'admin'
-        : invitedByEmail.length > 0
-          ? (invitedByEmail[0].role as UserRole)
-          : 'admin';
+      invitedByEmail.length > 0
+        ? (invitedByEmail[0].role as UserRole)
+        : 'member';
 
     const result = await db
       .insert(users)
@@ -366,6 +254,7 @@ export async function getFullWorkspaceData() {
       catRows,
       tagRows,
       mediaRows,
+      folderRows,
       settingsRow,
       redirectRows,
       commentRows,
@@ -374,11 +263,13 @@ export async function getFullWorkspaceData() {
       userRows,
       roleRows,
       doctorRows,
+      newsRows,
     ] = await Promise.all([
       db.select().from(posts).orderBy(desc(posts.updatedAt)),
       db.select().from(categories),
       db.select().from(tags),
       db.select().from(mediaAssets).orderBy(desc(mediaAssets.uploadedAt)),
+      db.select().from(mediaFolders).orderBy(mediaFolders.name),
       db.select().from(siteSettings).where(eq(siteSettings.id, 'default')).limit(1),
       db.select().from(redirects),
       db.select().from(comments).orderBy(desc(comments.createdAt)),
@@ -387,6 +278,7 @@ export async function getFullWorkspaceData() {
       db.select().from(users),
       db.select().from(customRoles),
       db.select().from(doctors).orderBy(desc(doctors.updatedAt)),
+      db.select().from(medicalNews).orderBy(desc(medicalNews.publishedAt)),
     ]);
 
     const settings = settingsRow[0];
@@ -454,6 +346,13 @@ export async function getFullWorkspaceData() {
         dimensions: m.dimensions,
         uploadedAt: m.uploadedAt,
         uploadedBy: m.uploadedBy,
+        folderId: m.folderId || undefined,
+      })),
+      mediaFolders: folderRows.map((f): MediaFolder => ({
+        id: f.id,
+        name: f.name,
+        color: f.color,
+        createdAt: f.createdAt,
       })),
       siteSeo: settings.siteSeo,
       siteBrand: settings.siteBrand || INITIAL_SITE_BRAND,
@@ -476,6 +375,16 @@ export async function getFullWorkspaceData() {
         featured: d.featured,
         status: d.status as DoctorProfile['status'],
         updatedAt: d.updatedAt,
+      })),
+      news: newsRows.map((n): MedicalNewsItem => ({
+        id: n.id,
+        title: n.title,
+        summary: n.summary,
+        source: n.source,
+        publishedAt: n.publishedAt,
+        categoryLabel: n.categoryLabel,
+        imageUrl: n.imageUrl,
+        doctorName: n.doctorName,
       })),
       spamConfig: settings.spamConfig,
       notificationPrefs: settings.notificationPrefs,
@@ -661,10 +570,25 @@ export async function upsertMediaDb(asset: MediaAsset) {
   try {
     await db
       .insert(mediaAssets)
-      .values(asset)
+      .values({
+        id: asset.id,
+        title: asset.title,
+        url: asset.url,
+        altText: asset.altText,
+        mimeType: asset.mimeType,
+        sizeKb: asset.sizeKb,
+        dimensions: asset.dimensions,
+        uploadedAt: asset.uploadedAt,
+        uploadedBy: asset.uploadedBy,
+        folderId: asset.folderId || null,
+      })
       .onConflictDoUpdate({
         target: mediaAssets.id,
-        set: { title: asset.title, altText: asset.altText },
+        set: {
+          title: asset.title,
+          altText: asset.altText,
+          folderId: asset.folderId || null,
+        },
       });
   } catch (error) {
     console.error('upsertMediaDb failed:', error);
@@ -678,6 +602,83 @@ export async function deleteMediaDb(id: string) {
   } catch (error) {
     console.error('deleteMediaDb failed:', error);
     throw new Error('Medya varlığı silinemedi.', { cause: error });
+  }
+}
+
+export async function upsertMediaFolderDb(folder: MediaFolder) {
+  try {
+    await db
+      .insert(mediaFolders)
+      .values({
+        id: folder.id,
+        name: folder.name,
+        color: folder.color,
+        createdAt: folder.createdAt,
+      })
+      .onConflictDoUpdate({
+        target: mediaFolders.id,
+        set: {
+          name: folder.name,
+          color: folder.color,
+        },
+      });
+  } catch (error) {
+    console.error('upsertMediaFolderDb failed:', error);
+    throw new Error('Klasör kaydedilemedi.', { cause: error });
+  }
+}
+
+export async function deleteMediaFolderDb(id: string) {
+  try {
+    await db
+      .update(mediaAssets)
+      .set({ folderId: null })
+      .where(eq(mediaAssets.folderId, id));
+    await db.delete(mediaFolders).where(eq(mediaFolders.id, id));
+  } catch (error) {
+    console.error('deleteMediaFolderDb failed:', error);
+    throw new Error('Klasör silinemedi.', { cause: error });
+  }
+}
+
+export async function upsertMedicalNewsDb(item: MedicalNewsItem) {
+  try {
+    await db
+      .insert(medicalNews)
+      .values({
+        id: item.id,
+        title: item.title,
+        summary: item.summary,
+        source: item.source,
+        publishedAt: item.publishedAt,
+        categoryLabel: item.categoryLabel,
+        imageUrl: item.imageUrl,
+        doctorName: item.doctorName,
+      })
+      .onConflictDoUpdate({
+        target: medicalNews.id,
+        set: {
+          title: item.title,
+          summary: item.summary,
+          source: item.source,
+          publishedAt: item.publishedAt,
+          categoryLabel: item.categoryLabel,
+          imageUrl: item.imageUrl,
+          doctorName: item.doctorName,
+        },
+      });
+  } catch (error) {
+    console.error('upsertMedicalNewsDb failed:', error);
+    throw new Error('Haber kaydı kaydedilemedi.', { cause: error });
+  }
+}
+
+export async function deleteMedicalNewsDb(id: string) {
+  try {
+    await db.delete(medicalNews).where(eq(medicalNews.id, id));
+  } catch (error) {
+    console.error('deleteMedicalNewsDb failed:', error);
+    throw new Error('Haber kaydı silinemedi.', { cause: error });
   }
 }
 
@@ -872,14 +873,27 @@ export async function inviteOrUpdateUserDb(user: TeamUser) {
       .onConflictDoUpdate({
         target: users.uid,
         set: {
+          name: user.name,
+          email: user.email,
           role: user.role,
           status: user.status,
           department: user.department,
+          avatarUrl: user.avatarUrl || null,
         },
       });
   } catch (error) {
     console.error('inviteOrUpdateUserDb failed:', error);
     throw new Error('Kullanıcı kaydı güncellenemedi.', { cause: error });
+  }
+}
+
+export async function deleteUserDb(id: string) {
+  try {
+    const uid = id.startsWith('usr-') ? `seed-${id}` : id;
+    await db.delete(users).where(eq(users.uid, uid));
+  } catch (error) {
+    console.error('deleteUserDb failed:', error);
+    throw new Error('Kullanıcı silinemedi.', { cause: error });
   }
 }
 
@@ -1002,4 +1016,420 @@ export async function deleteDoctorDb(id: string) {
     console.error('deleteDoctorDb failed:', error);
     throw new Error('Doktor kaydı silinemedi.', { cause: error });
   }
+}
+
+export async function getPublicHomeData(): Promise<PublicHomePayload> {
+  try {
+    await ensureWorkspaceSeeded();
+    const [
+      postRows,
+      catRows,
+      doctorRows,
+      userRows,
+      commentRows,
+      settingsRows,
+      newsRows,
+    ] = await Promise.all([
+      db
+        .select()
+        .from(posts)
+        .where(eq(posts.status, 'published'))
+        .orderBy(desc(posts.publishedAt)),
+      db.select().from(categories),
+      db
+        .select()
+        .from(doctors)
+        .where(eq(doctors.status, 'active'))
+        .orderBy(desc(doctors.featured)),
+      db.select().from(users),
+      db
+        .select()
+        .from(comments)
+        .where(eq(comments.status, 'approved'))
+        .orderBy(desc(comments.createdAt)),
+      db.select().from(siteSettings).where(eq(siteSettings.id, 'default')).limit(1),
+      db.select().from(medicalNews).orderBy(desc(medicalNews.publishedAt)),
+    ]);
+
+    const settings = settingsRows[0];
+    const authors: PublicAuthorSummary[] = userRows.map((row) => ({
+      id: row.uid.startsWith('seed-') ? row.uid.replace('seed-', '') : row.uid,
+      name: row.name,
+      role: row.role as UserRole,
+      avatarUrl: row.avatarUrl || undefined,
+      department: row.department,
+    }));
+
+    return {
+      siteBrand: settings?.siteBrand || INITIAL_SITE_BRAND,
+      siteName: settings?.siteSeo?.siteName || INITIAL_SITE_BRAND.brandName,
+      posts: postRows.map((p): BlogPost => ({
+        id: p.id,
+        title: p.title,
+        slug: p.slug,
+        excerpt: p.excerpt,
+        content: p.content,
+        categoryId: p.categoryId,
+        tags: p.tags,
+        authorId: p.authorId,
+        status: p.status as BlogPost['status'],
+        coverImage: p.coverImage,
+        coverAlt: p.coverAlt,
+        publishedAt: p.publishedAt,
+        scheduledFor: p.scheduledFor || undefined,
+        updatedAt: p.updatedAt,
+        readTimeMin: p.readTimeMin,
+        views: p.views,
+        organicViews: p.organicViews,
+        avgReadDurationSec: p.avgReadDurationSec,
+        bounceRate: p.bounceRate,
+        commentsCount: p.commentsCount,
+        featured: p.featured,
+        seo: p.seo,
+      })),
+      categories: catRows.map((c): Category => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: c.description,
+        color: c.color,
+      })),
+      doctors: doctorRows.map((d): DoctorProfile => ({
+        id: d.id,
+        fullName: d.fullName,
+        title: d.title,
+        specialty: d.specialty,
+        licenseNo: d.licenseNo,
+        department: d.department,
+        bio: d.bio,
+        avatarUrl: d.avatarUrl,
+        email: '',
+        phone: '',
+        location: d.location,
+        languages: d.languages,
+        availableDays: d.availableDays,
+        featured: d.featured,
+        status: d.status as DoctorProfile['status'],
+        updatedAt: d.updatedAt,
+      })),
+      authors,
+      comments: commentRows.map((c): PublicCommentItem => ({
+        id: c.id,
+        postId: c.postId,
+        authorName: c.authorName,
+        content: c.content,
+        createdAt: c.createdAt,
+        status: c.status as ModerationComment['status'],
+        moderatorReply: c.moderatorReply || undefined,
+      })),
+      news: newsRows.map((n): MedicalNewsItem => ({
+        id: n.id,
+        title: n.title,
+        summary: n.summary,
+        source: n.source,
+        publishedAt: n.publishedAt,
+        categoryLabel: n.categoryLabel,
+        imageUrl: n.imageUrl,
+        doctorName: n.doctorName,
+      })),
+    };
+  } catch (error) {
+    console.error('getPublicHomeData failed:', error);
+    throw new Error('Anasayfa içerikleri yüklenemedi.', { cause: error });
+  }
+}
+
+export async function createPublicCommentDb(input: {
+  postId: string;
+  authorName: string;
+  content: string;
+}): Promise<PublicCommentItem> {
+  try {
+    await ensureWorkspaceSeeded();
+    const targetPosts = await db
+      .select({ id: posts.id })
+      .from(posts)
+      .where(eq(posts.id, input.postId))
+      .limit(1);
+
+    if (targetPosts.length === 0) {
+      throw new Error('Yorum yapılacak blog yazısı bulunamadı.');
+    }
+
+    const settings = await getWorkspaceSettings();
+    const blockedWords = settings?.spamConfig?.blockedWords || [];
+    const lower = input.content.toLowerCase();
+    const flaggedWords = blockedWords.filter((w) => lower.includes(w.toLowerCase()));
+    const linkMatches = input.content.match(/https?:\/\//gi) || [];
+    const tooManyLinks =
+      linkMatches.length > (settings?.spamConfig?.maxLinksBeforeHold ?? 2);
+
+    const status: ModerationComment['status'] =
+      flaggedWords.length > 0 || tooManyLinks ? 'pending' : 'approved';
+
+    const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const id = `com-${Date.now()}`;
+
+    await db.insert(comments).values({
+      id,
+      postId: input.postId,
+      authorName: input.authorName,
+      authorEmail: 'okuyucu@site.local',
+      authorIp: '0.0.0.0',
+      content: input.content,
+      createdAt: nowStamp,
+      status,
+      flaggedWords,
+      isBlockedUser: false,
+    });
+
+    return {
+      id,
+      postId: input.postId,
+      authorName: input.authorName,
+      content: input.content,
+      createdAt: nowStamp,
+      status,
+    };
+  } catch (error: any) {
+    console.error('createPublicCommentDb failed:', error);
+    if (error?.message === 'Yorum yapılacak blog yazısı bulunamadı.') {
+      throw error;
+    }
+    throw new Error('Yorum kaydedilemedi.', { cause: error });
+  }
+}
+
+export function mapAccountToProfile(
+  row: typeof authAccounts.$inferSelect
+): AuthAccountProfile {
+  return {
+    id: row.id,
+    username: row.displayUsername,
+    displayName: row.displayName,
+    email: row.email,
+    avatarUrl: row.avatarUrl || undefined,
+    bio: row.bio || '',
+    role: row.isAdmin ? 'admin' : 'member',
+    isAdmin: Boolean(row.isAdmin),
+    provider: row.provider === 'google' ? 'google' : 'password',
+    canChangePassword: Boolean(row.passwordHash),
+  };
+}
+
+export async function getAuthAccountByIdDb(
+  id: string
+): Promise<AuthAccountProfile | null> {
+  await ensureWorkspaceSeeded();
+  const rows = await db
+    .select()
+    .from(authAccounts)
+    .where(eq(authAccounts.id, id))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return mapAccountToProfile(rows[0]);
+}
+
+export async function authenticateWithPasswordDb(
+  identifier: string,
+  password: string
+): Promise<AuthAccountProfile | null> {
+  await ensureWorkspaceSeeded();
+  const normalized = identifier.trim().toLowerCase();
+  if (!normalized || !password) return null;
+
+  const rows = await db
+    .select()
+    .from(authAccounts)
+    .where(
+      or(
+        eq(authAccounts.username, normalized),
+        eq(authAccounts.email, normalized)
+      )
+    )
+    .limit(1);
+
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (!row.passwordHash) return null;
+  if (!verifyPassword(password, row.passwordHash)) return null;
+
+  return mapAccountToProfile(row);
+}
+
+export async function registerMemberAccountDb(input: {
+  username: string;
+  displayName: string;
+  email: string;
+  password: string;
+  avatarUrl?: string;
+}): Promise<AuthAccountProfile> {
+  await ensureWorkspaceSeeded();
+  const cleanUsername = input.username.trim();
+  const normalizedUsername = cleanUsername.toLowerCase();
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  if (normalizedUsername === 'noh') {
+    throw new Error('Bu kullanıcı adı sistem tarafından ayrılmıştır.');
+  }
+
+  const existing = await db
+    .select({ id: authAccounts.id })
+    .from(authAccounts)
+    .where(
+      or(
+        eq(authAccounts.username, normalizedUsername),
+        eq(authAccounts.email, normalizedEmail)
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    throw new Error('Bu kullanıcı adı veya e-posta adresi zaten kayıtlı.');
+  }
+
+  const id = `acc-${crypto.randomUUID()}`;
+  const passwordHash = hashPassword(input.password);
+  const inserted = await db
+    .insert(authAccounts)
+    .values({
+      id,
+      username: normalizedUsername,
+      displayUsername: cleanUsername,
+      email: normalizedEmail,
+      displayName: input.displayName.trim(),
+      avatarUrl: input.avatarUrl?.trim() || null,
+      bio: '',
+      role: 'member',
+      isAdmin: false,
+      passwordHash,
+      firebaseUid: null,
+      provider: 'password',
+    })
+    .returning();
+
+  return mapAccountToProfile(inserted[0]);
+}
+
+export async function upsertGoogleMemberAccountDb(input: {
+  uid: string;
+  email: string;
+  name: string;
+  avatarUrl?: string;
+}): Promise<AuthAccountProfile> {
+  await ensureWorkspaceSeeded();
+  const existing = await db
+    .select()
+    .from(authAccounts)
+    .where(eq(authAccounts.firebaseUid, input.uid))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const row = existing[0];
+    const updated = await db
+      .update(authAccounts)
+      .set({
+        email: input.email ? input.email.toLowerCase() : row.email,
+        displayName: row.displayName || input.name,
+        avatarUrl: row.avatarUrl || input.avatarUrl || null,
+        role: 'member',
+        isAdmin: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(authAccounts.id, row.id))
+      .returning();
+    return mapAccountToProfile(updated[0]);
+  }
+
+  const baseHandle = (input.email?.split('@')[0] || input.name || 'uye')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '')
+    .slice(0, 20) || 'uye';
+  const uniqueHandle =
+    baseHandle === 'noh'
+      ? `uye_${input.uid.slice(0, 6).toLowerCase()}`
+      : `${baseHandle}_${input.uid.slice(0, 5).toLowerCase()}`;
+
+  const id = `acc-g-${input.uid}`;
+  const inserted = await db
+    .insert(authAccounts)
+    .values({
+      id,
+      username: uniqueHandle,
+      displayUsername: input.name || baseHandle,
+      email: (input.email || `${uniqueHandle}@google.local`).toLowerCase(),
+      displayName: input.name || 'Site Üyesi',
+      avatarUrl: input.avatarUrl || null,
+      bio: '',
+      role: 'member',
+      isAdmin: false,
+      passwordHash: null,
+      firebaseUid: input.uid,
+      provider: 'google',
+    })
+    .onConflictDoUpdate({
+      target: authAccounts.firebaseUid,
+      set: {
+        email: (input.email || `${uniqueHandle}@google.local`).toLowerCase(),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  return mapAccountToProfile(inserted[0]);
+}
+
+export async function updateAuthProfileDb(
+  accountId: string,
+  input: { displayName: string; avatarUrl?: string; bio?: string }
+): Promise<AuthAccountProfile> {
+  await ensureWorkspaceSeeded();
+  const updated = await db
+    .update(authAccounts)
+    .set({
+      displayName: input.displayName.trim(),
+      avatarUrl: input.avatarUrl !== undefined ? input.avatarUrl.trim() || null : undefined,
+      bio: input.bio !== undefined ? input.bio.trim() : undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(authAccounts.id, accountId))
+    .returning();
+
+  if (updated.length === 0) {
+    throw new Error('Kullanıcı hesabı bulunamadı.');
+  }
+  return mapAccountToProfile(updated[0]);
+}
+
+export async function changeAccountPasswordDb(
+  accountId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  await ensureWorkspaceSeeded();
+  const rows = await db
+    .select()
+    .from(authAccounts)
+    .where(eq(authAccounts.id, accountId))
+    .limit(1);
+
+  if (rows.length === 0) {
+    throw new Error('Kullanıcı hesabı bulunamadı.');
+  }
+  const row = rows[0];
+  if (!row.passwordHash) {
+    throw new Error('Bu hesap türünde şifre değiştirme desteklenmiyor.');
+  }
+  if (!verifyPassword(currentPassword, row.passwordHash)) {
+    throw new Error('Mevcut şifreniz hatalı.');
+  }
+
+  const nextHash = hashPassword(newPassword);
+  await db
+    .update(authAccounts)
+    .set({
+      passwordHash: nextHash,
+      updatedAt: new Date(),
+    })
+    .where(eq(authAccounts.id, accountId));
 }

@@ -110,8 +110,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           <p className="mt-2 font-mono text-2xl font-semibold text-slate-900 tabular-nums dark:text-white">
             {formatNumberTR(totalViews)}
           </p>
-          <p className="mt-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-            +18,4% son 30 günde
+          <p className="mt-1.5 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+            {posts.length > 0
+              ? `Yayında ${publishedCount} makale`
+              : 'Şu anda Herhangi bir veri bulunamadı'}
           </p>
         </div>
 
@@ -210,86 +212,92 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
           )}
 
-          <div className="mt-4">
-            <svg
-              viewBox={`0 0 ${chartW} ${chartH}`}
-              className="h-56 w-full overflow-visible"
-              role="img"
-              aria-label="Günlük okunma ve organik trafik grafiği"
-            >
-              <defs>
-                <linearGradient id="overviewTotalFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2563EB" stopOpacity="0.18" />
-                  <stop offset="100%" stopColor="#2563EB" stopOpacity="0.01" />
-                </linearGradient>
-              </defs>
-
-              {[0.25, 0.5, 0.75, 1].map((ratio) => {
-                const y = chartH - padY - ratio * (chartH - padY * 2);
-                return (
-                  <line
-                    key={ratio}
-                    x1={padX}
-                    y1={y}
-                    x2={chartW - padX}
-                    y2={y}
-                    stroke="currentColor"
-                    className="text-slate-100 dark:text-slate-800"
-                    strokeDasharray="3 3"
-                  />
-                );
-              })}
-
-              {areaPath && <path d={areaPath} fill="url(#overviewTotalFill)" />}
-              {totalLinePath && (
-                <path
-                  d={totalLinePath}
-                  fill="none"
-                  stroke="#2563EB"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-              {organicLinePath && (
-                <path
-                  d={organicLinePath}
-                  fill="none"
-                  stroke="#0D9488"
-                  strokeWidth="2"
-                  strokeDasharray="4 3"
-                  strokeLinecap="round"
-                />
-              )}
-
-              {pointsTotal.map((pt, idx) => (
-                <g key={pt.data.date}>
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={hoveredIdx === idx ? 5 : 2.5}
-                    fill="#2563EB"
-                    className="transition-all"
-                  />
-                  <rect
-                    x={pt.x - 10}
-                    y={0}
-                    width={20}
-                    height={chartH}
-                    fill="transparent"
-                    onMouseEnter={() => setHoveredIdx(idx)}
-                    onMouseLeave={() => setHoveredIdx(null)}
-                    className="cursor-crosshair"
-                  />
-                </g>
-              ))}
-            </svg>
-            <div className="mt-1 flex items-center justify-between px-4 text-[11px] text-slate-400 tabular-nums">
-              <span>{visibleSeries[0]?.label}</span>
-              <span>{visibleSeries[Math.floor(visibleSeries.length / 2)]?.label}</span>
-              <span>{visibleSeries[visibleSeries.length - 1]?.label}</span>
+          {visibleSeries.length === 0 ? (
+            <div className="mt-4 flex h-56 items-center justify-center rounded-xl border border-dashed border-slate-200 px-4 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              Şu anda Herhangi bir veri bulunamadı
             </div>
-          </div>
+          ) : (
+            <div className="mt-4">
+              <svg
+                viewBox={`0 0 ${chartW} ${chartH}`}
+                className="h-56 w-full overflow-visible"
+                role="img"
+                aria-label="Günlük okunma ve organik trafik grafiği"
+              >
+                <defs>
+                  <linearGradient id="overviewTotalFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2563EB" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#2563EB" stopOpacity="0.01" />
+                  </linearGradient>
+                </defs>
+
+                {[0.25, 0.5, 0.75, 1].map((ratio) => {
+                  const y = chartH - padY - ratio * (chartH - padY * 2);
+                  return (
+                    <line
+                      key={ratio}
+                      x1={padX}
+                      y1={y}
+                      x2={chartW - padX}
+                      y2={y}
+                      stroke="currentColor"
+                      className="text-slate-100 dark:text-slate-800"
+                      strokeDasharray="3 3"
+                    />
+                  );
+                })}
+
+                {areaPath && <path d={areaPath} fill="url(#overviewTotalFill)" />}
+                {totalLinePath && (
+                  <path
+                    d={totalLinePath}
+                    fill="none"
+                    stroke="#2563EB"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {organicLinePath && (
+                  <path
+                    d={organicLinePath}
+                    fill="none"
+                    stroke="#0D9488"
+                    strokeWidth="2"
+                    strokeDasharray="4 3"
+                    strokeLinecap="round"
+                  />
+                )}
+
+                {pointsTotal.map((pt, idx) => (
+                  <g key={pt.data.date}>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={hoveredIdx === idx ? 5 : 2.5}
+                      fill="#2563EB"
+                      className="transition-all"
+                    />
+                    <rect
+                      x={pt.x - 10}
+                      y={0}
+                      width={20}
+                      height={chartH}
+                      fill="transparent"
+                      onMouseEnter={() => setHoveredIdx(idx)}
+                      onMouseLeave={() => setHoveredIdx(null)}
+                      className="cursor-crosshair"
+                    />
+                  </g>
+                ))}
+              </svg>
+              <div className="mt-1 flex items-center justify-between px-4 text-[11px] text-slate-400 tabular-nums">
+                <span>{visibleSeries[0]?.label}</span>
+                <span>{visibleSeries[Math.floor(visibleSeries.length / 2)]?.label}</span>
+                <span>{visibleSeries[visibleSeries.length - 1]?.label}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Actionable Team Queue */}
@@ -309,44 +317,50 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {tasks
-              .filter((t) => t.status !== 'done')
-              .slice(0, 4)
-              .map((task) => {
-                const assignee = users.find((u) => u.id === task.assigneeId);
-                return (
-                  <div key={task.id} className="py-3 first:pt-1 last:pb-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                        {task.title}
-                      </p>
-                      <span
-                        className={`shrink-0 text-[11px] font-medium ${
-                          task.priority === 'urgent'
-                            ? 'text-red-600 dark:text-red-400'
+            {tasks.filter((t) => t.status !== 'done').length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                Şu anda Herhangi bir veri bulunamadı
+              </div>
+            ) : (
+              tasks
+                .filter((t) => t.status !== 'done')
+                .slice(0, 4)
+                .map((task) => {
+                  const assignee = users.find((u) => u.id === task.assigneeId);
+                  return (
+                    <div key={task.id} className="py-3 first:pt-1 last:pb-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {task.title}
+                        </p>
+                        <span
+                          className={`shrink-0 text-[11px] font-medium ${
+                            task.priority === 'urgent'
+                              ? 'text-red-600 dark:text-red-400'
+                              : task.priority === 'high'
+                                ? 'text-amber-700 dark:text-amber-400'
+                                : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {task.priority === 'urgent'
+                            ? 'Acil'
                             : task.priority === 'high'
-                              ? 'text-amber-700 dark:text-amber-400'
-                              : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {task.priority === 'urgent'
-                          ? 'Acil'
-                          : task.priority === 'high'
-                            ? 'Yüksek'
-                            : 'Orta'}
-                      </span>
+                              ? 'Yüksek'
+                              : 'Orta'}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span>{assignee?.name ?? 'Atanmamış'}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+                          <Calendar className="h-3 w-3" />
+                          {task.dueDate}
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span>{assignee?.name ?? 'Atanmamış'}</span>
-                      <span aria-hidden="true">·</span>
-                      <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-                        <Calendar className="h-3 w-3" />
-                        {task.dueDate}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+            )}
           </div>
 
           <div className="border-t border-slate-200 pt-4 dark:border-slate-800">
@@ -400,91 +414,99 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {posts.slice(0, 5).map((post) => {
-                const author = users.find((u) => u.id === post.authorId);
-                const category = categories.find((c) => c.id === post.categoryId);
-                const audit = evaluatePostSeo(post);
+              {posts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Şu anda Herhangi bir veri bulunamadı
+                  </td>
+                </tr>
+              ) : (
+                posts.slice(0, 5).map((post) => {
+                  const author = users.find((u) => u.id === post.authorId);
+                  const category = categories.find((c) => c.id === post.categoryId);
+                  const audit = evaluatePostSeo(post);
 
-                return (
-                  <tr
-                    key={post.id}
-                    className="transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <SafeImage
-                          src={post.coverImage}
-                          alt={post.coverAlt}
-                          fallbackLabel={post.title}
-                          className="h-10 w-14 shrink-0 rounded-md object-cover"
-                        />
-                        <div className="min-w-0">
-                          <p className="max-w-md truncate font-medium text-slate-900 dark:text-slate-100">
-                            {post.title}
-                          </p>
-                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                            {category?.name ?? 'Genel'} · {post.readTimeMin} dk okuma · {post.publishedAt}
-                          </p>
+                  return (
+                    <tr
+                      key={post.id}
+                      className="transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <SafeImage
+                            src={post.coverImage}
+                            alt={post.coverAlt}
+                            fallbackLabel={post.title}
+                            className="h-10 w-14 shrink-0 rounded-md object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="max-w-md truncate font-medium text-slate-900 dark:text-slate-100">
+                              {post.title}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                              {category?.name ?? 'Genel'} · {post.readTimeMin} dk okuma · {post.publishedAt}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap dark:text-slate-300">
-                      {author?.name ?? 'Ekip'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`text-xs font-medium ${
-                          post.status === 'published'
-                            ? 'text-emerald-700 dark:text-emerald-400'
-                            : post.status === 'review'
-                              ? 'text-amber-700 dark:text-amber-400'
-                              : post.status === 'scheduled'
-                                ? 'text-blue-700 dark:text-blue-400'
-                                : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {POST_STATUS_LABELS[post.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
-                      {formatNumberTR(post.views)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs tabular-nums">
-                      <span
-                        className={
-                          audit.score >= 80
-                            ? 'font-semibold text-emerald-700 dark:text-emerald-400'
-                            : audit.score >= 55
-                              ? 'font-semibold text-amber-700 dark:text-amber-400'
-                              : 'font-semibold text-red-600 dark:text-red-400'
-                        }
-                      >
-                        %{audit.score}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEditPost(post)}
-                          title="Yazıyı düzenle"
-                          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap dark:text-slate-300">
+                        {author?.name ?? 'Ekip'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`text-xs font-medium ${
+                            post.status === 'published'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : post.status === 'review'
+                                ? 'text-amber-700 dark:text-amber-400'
+                                : post.status === 'scheduled'
+                                  ? 'text-blue-700 dark:text-blue-400'
+                                  : 'text-slate-500 dark:text-slate-400'
+                          }`}
                         >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onInspectPostSeo(post.id)}
-                          title="SEO denetimini aç"
-                          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                          {POST_STATUS_LABELS[post.status]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-slate-700 tabular-nums dark:text-slate-300">
+                        {formatNumberTR(post.views)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs tabular-nums">
+                        <span
+                          className={
+                            audit.score >= 80
+                              ? 'font-semibold text-emerald-700 dark:text-emerald-400'
+                              : audit.score >= 55
+                                ? 'font-semibold text-amber-700 dark:text-amber-400'
+                                : 'font-semibold text-red-600 dark:text-red-400'
+                          }
                         >
-                          <Globe className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                          %{audit.score}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onEditPost(post)}
+                            title="Yazıyı düzenle"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onInspectPostSeo(post.id)}
+                            title="SEO denetimini aç"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                          >
+                            <Globe className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

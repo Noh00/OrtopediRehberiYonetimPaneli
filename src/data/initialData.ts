@@ -6,6 +6,7 @@ import type {
   DailyTrafficPoint,
   DoctorProfile,
   MediaAsset,
+  MedicalNewsItem,
   ModerationComment,
   NotificationPreferences,
   RedirectRule,
@@ -983,4 +984,58 @@ export const INITIAL_DOCTORS: DoctorProfile[] = [
     updatedAt: '2026-11-20',
   },
 ];
+
+export const INITIAL_MEDICAL_NEWS: MedicalNewsItem[] = [
+  {
+    id: 'news-1',
+    title: 'Robotik Diz Protezi Cerrahisinde 2026 Klinik Takip Sonuçları Yayınlandı',
+    summary: 'Merkez kliniğimizin 420 vakalık takip çalışmasında ameliyat sonrası erken mobilizasyon süresinin %32 kısaldığı raporlandı.',
+    source: 'Türk Ortopedi Bülteni',
+    publishedAt: '2026-11-25',
+    categoryLabel: 'Klinik Araştırma',
+    imageUrl: COVER_ARCHITECTURE,
+    doctorName: 'Prof. Dr. Ahmet Demirtaş',
+  },
+  {
+    id: 'news-2',
+    title: 'Sporcu Sağlığında Ön Çapraz Bağ Yaralanmaları İçin Yeni Önleme Protokolü',
+    summary: 'Nöromusküler denge antrenmanlarının genç sporcularda bağ yaralanma riskini belirgin ölçüde azalttığı açıklandı.',
+    source: 'Spor Hekimliği Dergisi',
+    publishedAt: '2026-11-23',
+    categoryLabel: 'Spor Cerrahisi',
+    imageUrl: COVER_TECHNOLOGY,
+    doctorName: 'Doç. Dr. Zeynep Aksoy',
+  },
+  {
+    id: 'news-3',
+    title: 'Karpal Tünel Sendromunda Endoskopik Gevşetme Başarı Oranları Artıyor',
+    summary: 'Minimal invaziv mikrocerrahi tekniklerle hastaların günlük yaşama dönüş süresi ortalama 5 güne indi.',
+    source: 'El ve Mikrocerrahi Derneği',
+    publishedAt: '2026-11-21',
+    categoryLabel: 'Mikrocerrahi',
+    imageUrl: COVER_ANALYTICS,
+    doctorName: 'Op. Dr. Kerem Aydın',
+  },
+  {
+    id: 'news-4',
+    title: 'Skolyoz Tarama Programlarında Yapay Zeka Destekli Postür Analizi Dönemi',
+    summary: 'Okul çağı taramalarında radyasyon içermeyen optik topografi yöntemleri erken teşhis oranını yükseltiyor.',
+    source: 'Ulusal FTR Kongresi',
+    publishedAt: '2026-11-18',
+    categoryLabel: 'Rehabilitasyon',
+    imageUrl: COVER_ARCHITECTURE,
+    doctorName: 'Doç. Dr. Zeynep Aksoy',
+  },
+  {
+    id: 'news-5',
+    title: 'Kış Aylarında D Vitamini Düzeyleri ve Kemik Yoğunluğu İlişkisi',
+    summary: 'Osteoporoz risk grubundaki bireylerde düzenli kemik mineral yoğunluğu takibi ve beslenme kılavuzu güncellendi.',
+    source: 'Medikal Haber Ağı',
+    publishedAt: '2026-11-15',
+    categoryLabel: 'Koruyucu Hekimlik',
+    imageUrl: COVER_TECHNOLOGY,
+    doctorName: 'Prof. Dr. Ahmet Demirtaş',
+  },
+];
+
 

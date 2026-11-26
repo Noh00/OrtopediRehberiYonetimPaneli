@@ -4,6 +4,9 @@ import {
   CheckCircle2,
   Code,
   Eye,
+  Film,
+  Folder,
+  FolderOpen,
   Heading2,
   Image as ImageIcon,
   Italic,
@@ -12,6 +15,7 @@ import {
   Quote,
   RefreshCw,
   Save,
+  Upload,
   X,
   AlertCircle,
   Globe,
@@ -21,6 +25,7 @@ import {
   BlogPost,
   Category,
   MediaAsset,
+  MediaFolder,
   PostStatus,
   TagItem,
   TeamUser,
@@ -34,8 +39,11 @@ interface PostEditorModalProps {
   tags: TagItem[];
   users: TeamUser[];
   mediaAssets: MediaAsset[];
+  mediaFolders: MediaFolder[];
   currentUserId: string;
+  currentUserName: string;
   canPublish: boolean;
+  onAddMedia?: (asset: MediaAsset) => Promise<void> | void;
   onSave: (post: BlogPost, isNew: boolean) => void;
   onClose: () => void;
 }
@@ -46,31 +54,35 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
   tags,
   users,
   mediaAssets,
+  mediaFolders,
   currentUserId,
+  currentUserName,
   canPublish,
+  onAddMedia,
   onSave,
   onClose,
 }) => {
   const isNew = !initialPost;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const computerFileRef = useRef<HTMLInputElement>(null);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   const [draft, setDraft] = useState<BlogPost>(() => {
     if (initialPost) return initialPost;
-    const defaultCover = mediaAssets[0];
     return {
       id: `post-${Date.now()}`,
       title: '',
       slug: '',
       excerpt: '',
       content: '## Giriş\n\nYazınızın ana fikrini ve okura sunacağınız değeri burada paylaşın.',
-      categoryId: categories[0]?.id ?? 'cat-tech',
+      categoryId: categories[0]?.id ?? '',
       tags: [],
       authorId: currentUserId,
       status: 'draft',
-      coverImage: defaultCover?.url ?? '',
-      coverAlt: defaultCover?.altText ?? '',
-      publishedAt: '2026-11-26',
-      updatedAt: '2026-11-26',
+      coverImage: '',
+      coverAlt: '',
+      publishedAt: todayStr,
+      updatedAt: todayStr,
       readTimeMin: 4,
       views: 0,
       organicViews: 0,
@@ -96,6 +108,80 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
   const [slugLocked, setSlugLocked] = useState(!isNew);
   const [customTag, setCustomTag] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [pickerTarget, setPickerTarget] = useState<null | 'cover' | 'content'>(null);
+  const [pickerFolderId, setPickerFolderId] = useState<string>('all');
+  const [computerTarget, setComputerTarget] = useState<'cover' | 'content'>('cover');
+
+  const pickerAssets = useMemo(() => {
+    if (pickerFolderId === 'all') return mediaAssets;
+    if (pickerFolderId === 'unassigned') return mediaAssets.filter((m) => !m.folderId);
+    return mediaAssets.filter((m) => m.folderId === pickerFolderId);
+  }, [mediaAssets, pickerFolderId]);
+
+  const handleSelectComputerFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMsg('Dosya boyutu en fazla 15 MB olabilir.');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!dataUrl) return;
+      const cleanTitle = file.name.replace(/\.[^.]+$/, '');
+      const isVideo = file.type.startsWith('video/');
+
+      if (onAddMedia) {
+        const asset: MediaAsset = {
+          id: `med-${Date.now()}`,
+          title: cleanTitle,
+          url: dataUrl,
+          altText: cleanTitle,
+          mimeType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+          sizeKb: Math.max(1, Math.round(file.size / 1024)),
+          dimensions: isVideo ? 'Video Dosyası' : 'Bilgisayardan Yüklenen',
+          uploadedAt: todayStr,
+          uploadedBy: currentUserName,
+        };
+        await onAddMedia(asset);
+      }
+
+      if (computerTarget === 'cover') {
+        setDraft((prev) => ({
+          ...prev,
+          coverImage: dataUrl,
+          coverAlt: prev.coverAlt || cleanTitle,
+        }));
+      } else {
+        insertFormatting(
+          isVideo ? `\n[Video: ${cleanTitle}](${dataUrl})\n` : `\n![${cleanTitle}](${dataUrl})\n`
+        );
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const applyPickedAsset = (asset: MediaAsset) => {
+    const isVideo =
+      asset.mimeType.startsWith('video/') || asset.url.startsWith('data:video/');
+    if (pickerTarget === 'cover') {
+      setDraft((prev) => ({
+        ...prev,
+        coverImage: asset.url,
+        coverAlt: prev.coverAlt || asset.altText || asset.title,
+      }));
+    } else if (pickerTarget === 'content') {
+      insertFormatting(
+        isVideo
+          ? `\n[Video: ${asset.title}](${asset.url})\n`
+          : `\n![${asset.altText || asset.title}](${asset.url})\n`
+      );
+    }
+    setPickerTarget(null);
+  };
 
   const audit = useMemo(() => evaluatePostSeo(draft), [draft]);
 
@@ -162,7 +248,7 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
       ...draft,
       slug: finalSlug,
       readTimeMin: Math.max(1, Math.round(words / 180)),
-      updatedAt: '2026-11-26',
+      updatedAt: todayStr,
       seo: {
         ...draft.seo,
         seoTitle: draft.seo.seoTitle || draft.title,
@@ -382,13 +468,24 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() =>
-                          insertFormatting(`\n![${draft.coverAlt || 'Görsel'}](${draft.coverImage})\n`)
-                        }
-                        title="Görsel Bağlantısı Ekle"
-                        className="rounded p-1.5 text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-700"
+                        onClick={() => setPickerTarget('content')}
+                        title="Klasörden Görsel / Video Ekle"
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-700"
                       >
-                        <ImageIcon className="h-4 w-4" />
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        <span>Klasörden Ekle</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComputerTarget('content');
+                          computerFileRef.current?.click();
+                        }}
+                        title="Bilgisayardan Görsel / Video Ekle"
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-700"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        <span>Dosya Seç</span>
                       </button>
                     </div>
                     <textarea
@@ -496,11 +593,15 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
                       }
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                     >
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
+                      {categories.length === 0 ? (
+                        <option value="">Genel (Kategori Yok)</option>
+                      ) : (
+                        categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -514,50 +615,94 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
                       }
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                     >
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
+                      {users.length === 0 ? (
+                        <option value={currentUserId}>{currentUserName}</option>
+                      ) : (
+                        users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* Cover Media */}
-              <div className="space-y-2 border-t border-slate-200 pt-4 dark:border-slate-800">
-                <label className="block text-xs font-semibold text-slate-900 dark:text-white">
-                  Kapak Görseli
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {mediaAssets.slice(0, 3).map((asset) => {
-                    const active = draft.coverImage === asset.url;
-                    return (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        onClick={() =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            coverImage: asset.url,
-                            coverAlt: prev.coverAlt || asset.altText,
-                          }))
-                        }
-                        className={`overflow-hidden rounded-lg border-2 transition-all ${
-                          active
-                            ? 'border-blue-600'
-                            : 'border-transparent opacity-75 hover:opacity-100'
-                        }`}
-                      >
-                        <SafeImage
-                          src={asset.url}
-                          alt={asset.altText}
-                          className="h-14 w-full object-cover"
-                        />
-                      </button>
-                    );
-                  })}
+              {/* Cover Media: Pick from Folder OR Upload from Computer */}
+              <div className="space-y-2.5 border-t border-slate-200 pt-4 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-900 dark:text-white">
+                    Kapak Görseli / Video
+                  </label>
+                  {draft.coverImage && (
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => ({ ...prev, coverImage: '', coverAlt: '' }))}
+                      className="text-[11px] font-medium text-red-600 hover:underline dark:text-red-400"
+                    >
+                      Kaldır
+                    </button>
+                  )}
                 </div>
+
+                <input
+                  ref={computerFileRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleSelectComputerFile}
+                  className="hidden"
+                />
+
+                {draft.coverImage ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+                    {draft.coverImage.startsWith('data:video/') ||
+                    /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(draft.coverImage) ? (
+                      <video
+                        src={draft.coverImage}
+                        controls
+                        className="h-32 w-full bg-black object-contain"
+                      />
+                    ) : (
+                      <SafeImage
+                        src={draft.coverImage}
+                        alt={draft.coverAlt || draft.title}
+                        fallbackLabel={draft.title || 'Kapak'}
+                        className="h-32 w-full object-cover"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xs text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+                    Henüz kapak seçilmedi
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerFolderId('all');
+                      setPickerTarget('cover');
+                    }}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Klasörden Seç</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setComputerTarget('cover');
+                      computerFileRef.current?.click();
+                    }}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    <Upload className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Bilgisayardan Seç</span>
+                  </button>
+                </div>
+
                 <input
                   type="text"
                   value={draft.coverAlt}
@@ -741,6 +886,127 @@ export const PostEditorModal: React.FC<PostEditorModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Folder-Based Media Picker Modal */}
+      {pickerTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+              <div>
+                <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+                  Klasörlerden Görsel / Video Seç
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Bir klasör seçin ve yazınıza eklemek istediğiniz dosyaya tıklayın.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerTarget(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/40">
+              <button
+                type="button"
+                onClick={() => setPickerFolderId('all')}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                  pickerFolderId === 'all'
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                    : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                }`}
+              >
+                <Folder className="h-3.5 w-3.5" />
+                <span>Tümü ({mediaAssets.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerFolderId('unassigned')}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                  pickerFolderId === 'unassigned'
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                    : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                }`}
+              >
+                <span>Klasörsüz ({mediaAssets.filter((m) => !m.folderId).length})</span>
+              </button>
+              {mediaFolders.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setPickerFolderId(f.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                    pickerFolderId === f.id
+                      ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                      : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                  }`}
+                >
+                  <Folder className="h-3.5 w-3.5" style={{ color: f.color, fill: f.color }} />
+                  <span>{f.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="overflow-y-auto p-5">
+              {pickerAssets.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
+                    Şu anda Herhangi bir veri bulunamadı
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Bilgisayarınızdan dosya seçebilir veya Medya Kütüphanesinden yeni dosya yükleyebilirsiniz.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {pickerAssets.map((asset) => {
+                    const isVideo =
+                      asset.mimeType.startsWith('video/') || asset.url.startsWith('data:video/');
+                    return (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => applyPickedAsset(asset)}
+                        className="group overflow-hidden rounded-xl border border-slate-200 text-left transition-colors hover:border-blue-600 dark:border-slate-800 dark:hover:border-blue-500"
+                      >
+                        <div className="relative aspect-video overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          {isVideo ? (
+                            <video src={asset.url} muted className="h-full w-full object-cover" />
+                          ) : (
+                            <SafeImage
+                              src={asset.url}
+                              alt={asset.altText || asset.title}
+                              fallbackLabel={asset.title}
+                              className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                            />
+                          )}
+                          {isVideo && (
+                            <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                              <Film className="h-3 w-3" />
+                              Video
+                            </span>
+                          )}
+                        </div>
+                        <div className="p-2.5">
+                          <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
+                            {asset.title}
+                          </p>
+                          <p className="truncate font-mono text-[10px] text-slate-400">
+                            {asset.dimensions} · {asset.sizeKb} KB
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

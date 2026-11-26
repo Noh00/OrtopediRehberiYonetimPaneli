@@ -4,6 +4,7 @@ import {
   Edit3,
   ExternalLink,
   Image as ImageIcon,
+  Newspaper,
   Palette,
   Plus,
   Save,
@@ -24,6 +25,7 @@ import type {
   DoctorProfile,
   DoctorStatus,
   MediaAsset,
+  MedicalNewsItem,
   PermissionKey,
   RoleDefinition,
   SiteBrandConfig,
@@ -32,7 +34,7 @@ import type {
 } from '../types/admin';
 import { SafeImage } from './SafeImage';
 
-type StudioTab = 'brand' | 'roles' | 'doctors';
+type StudioTab = 'brand' | 'roles' | 'doctors' | 'news';
 
 interface SiteStudioViewProps {
   siteBrand: SiteBrandConfig;
@@ -41,6 +43,7 @@ interface SiteStudioViewProps {
   roles: RoleDefinition[];
   users: TeamUser[];
   doctors: DoctorProfile[];
+  news: MedicalNewsItem[];
   canManageBrand: boolean;
   canManageRoles: boolean;
   canManageDoctors: boolean;
@@ -51,6 +54,8 @@ interface SiteStudioViewProps {
   onDeleteRole: (roleKey: string) => Promise<boolean> | boolean;
   onSaveDoctor: (doctor: DoctorProfile, isNew: boolean) => Promise<boolean> | boolean;
   onDeleteDoctor: (id: string) => Promise<boolean> | boolean;
+  onSaveNews: (item: MedicalNewsItem, isNew: boolean) => Promise<boolean> | boolean;
+  onDeleteNews: (id: string) => Promise<boolean> | boolean;
 }
 
 const PERMISSION_OPTIONS: { key: PermissionKey; label: string; desc: string }[] = [
@@ -101,6 +106,7 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
   roles,
   users,
   doctors,
+  news,
   canManageBrand,
   canManageRoles,
   canManageDoctors,
@@ -111,6 +117,8 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
   onDeleteRole,
   onSaveDoctor,
   onDeleteDoctor,
+  onSaveNews,
+  onDeleteNews,
 }) => {
   const [activeTab, setActiveTab] = useState<StudioTab>('brand');
 
@@ -120,7 +128,7 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
   const [brandSaving, setBrandSaving] = useState(false);
   const [brandSavedMsg, setBrandSavedMsg] = useState('');
   const [mediaPickerTarget, setMediaPickerTarget] = useState<
-    null | 'logoLightUrl' | 'logoDarkUrl' | 'faviconUrl' | 'heroBannerUrl' | 'secondaryBannerUrl' | 'doctorAvatar'
+    null | 'logoLightUrl' | 'logoDarkUrl' | 'faviconUrl' | 'heroBannerUrl' | 'secondaryBannerUrl' | 'doctorAvatar' | 'newsImage'
   >(null);
 
   // Sync draft when server prop refreshes externally
@@ -166,6 +174,21 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
   const [docLanguagesInput, setDocLanguagesInput] = useState('Türkçe');
   const [docSaving, setDocSaving] = useState(false);
 
+  // --- Tab 4: News Management state ---
+  const [newsModalOpen, setNewsModalOpen] = useState(false);
+  const [editingNews, setEditingNews] = useState<MedicalNewsItem | null>(null);
+  const [newsForm, setNewsForm] = useState<MedicalNewsItem>({
+    id: '',
+    title: '',
+    summary: '',
+    source: '',
+    publishedAt: new Date().toISOString().slice(0, 10),
+    categoryLabel: 'Güncel Duyuru',
+    imageUrl: '',
+    doctorName: '',
+  });
+  const [newsSaving, setNewsSaving] = useState(false);
+
   const filteredDoctors = useMemo(() => {
     const q = docSearch.trim().toLowerCase();
     return doctors.filter((d) => {
@@ -192,7 +215,7 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
 
   const handleLocalFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    target: 'logoLightUrl' | 'logoDarkUrl' | 'faviconUrl' | 'heroBannerUrl' | 'secondaryBannerUrl' | 'doctorAvatar'
+    target: 'logoLightUrl' | 'logoDarkUrl' | 'faviconUrl' | 'heroBannerUrl' | 'secondaryBannerUrl' | 'doctorAvatar' | 'newsImage'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -223,6 +246,8 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
 
       if (target === 'doctorAvatar') {
         setDocForm((prev) => ({ ...prev, avatarUrl: dataUrl }));
+      } else if (target === 'newsImage') {
+        setNewsForm((prev) => ({ ...prev, imageUrl: dataUrl }));
       } else {
         setBrandDraft((prev) => ({ ...prev, [target]: dataUrl }));
       }
@@ -350,6 +375,55 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
     }
   };
 
+  const openNewNewsModal = () => {
+    setEditingNews(null);
+    setNewsForm({
+      id: `news-${Date.now()}`,
+      title: '',
+      summary: '',
+      source: brandDraft.brandName || 'Editoryal Bülten',
+      publishedAt: new Date().toISOString().slice(0, 10),
+      categoryLabel: 'Güncel Haber',
+      imageUrl: '',
+      doctorName: doctors.find((d) => d.status === 'active')?.fullName || currentUserName,
+    });
+    setNewsModalOpen(true);
+  };
+
+  const openEditNewsModal = (item: MedicalNewsItem) => {
+    setEditingNews(item);
+    setNewsForm({ ...item });
+    setNewsModalOpen(true);
+  };
+
+  const handleNewsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canManageBrand && !canManageDoctors) return;
+    if (!newsForm.title.trim()) return;
+
+    setNewsSaving(true);
+    try {
+      const ok = await onSaveNews(
+        {
+          ...newsForm,
+          title: newsForm.title.trim(),
+          summary: newsForm.summary.trim(),
+          source: newsForm.source.trim() || brandDraft.brandName,
+          categoryLabel: newsForm.categoryLabel.trim() || 'Haber',
+          doctorName: newsForm.doctorName.trim() || currentUserName,
+          publishedAt: newsForm.publishedAt || new Date().toISOString().slice(0, 10),
+        },
+        !editingNews
+      );
+      if (ok) {
+        setNewsModalOpen(false);
+        setEditingNews(null);
+      }
+    } finally {
+      setNewsSaving(false);
+    }
+  };
+
   const renderImageField = (
     label: string,
     hint: string,
@@ -464,6 +538,18 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
           >
             <Stethoscope className="h-3.5 w-3.5" />
             <span>Doktor Yönetimi ({doctors.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('news')}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'news'
+                ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <Newspaper className="h-3.5 w-3.5" />
+            <span>Haberler ({news.length})</span>
           </button>
         </div>
 
@@ -884,28 +970,34 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
                     Vitrindeki Aktif Uzman Hekimler ({doctors.filter((d) => d.status === 'active').length})
                   </p>
                   <div className="mt-2 space-y-2">
-                    {doctors
-                      .filter((d) => d.status === 'active')
-                      .slice(0, 2)
-                      .map((doc) => (
-                        <div key={doc.id} className="flex items-center gap-2.5">
-                          <SafeImage
-                            src={doc.avatarUrl}
-                            alt={doc.fullName}
-                            fallbackLabel={doc.fullName}
-                            isAvatar
-                            className="h-8 w-8 rounded-md object-cover"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
-                              {doc.fullName}
-                            </p>
-                            <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                              {doc.specialty}
-                            </p>
+                    {doctors.filter((d) => d.status === 'active').length === 0 ? (
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        Şu anda Herhangi bir veri bulunamadı
+                      </p>
+                    ) : (
+                      doctors
+                        .filter((d) => d.status === 'active')
+                        .slice(0, 2)
+                        .map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-2.5">
+                            <SafeImage
+                              src={doc.avatarUrl}
+                              alt={doc.fullName}
+                              fallbackLabel={doc.fullName}
+                              isAvatar
+                              className="h-8 w-8 rounded-md object-cover"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                {doc.fullName}
+                              </p>
+                              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                                {doc.specialty}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -941,7 +1033,12 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {roles.map((r) => {
+              {roles.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+                  Şu anda Herhangi bir veri bulunamadı
+                </div>
+              ) : (
+                roles.map((r) => {
                 const activePermsCount = Object.values(r.permissions).filter(Boolean).length;
                 const assignedUsersCount = users.filter((u) => u.role === r.key).length;
                 const isEditing = editingRoleKey === r.key;
@@ -1003,7 +1100,8 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
                     </div>
                   </div>
                 );
-              })}
+              })
+              )}
             </div>
           </section>
 
@@ -1257,7 +1355,7 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
                   {filteredDoctors.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-5 py-10 text-center text-xs text-slate-500">
-                        Kriterlere uyan doktor kaydı bulunamadı.
+                        Şu anda Herhangi bir veri bulunamadı
                       </td>
                     </tr>
                   ) : (
@@ -1373,6 +1471,101 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
         </div>
       )}
 
+      {/* TAB 4: NEWS MANAGEMENT */}
+      {activeTab === 'news' && (
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div>
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+                Anasayfa Haber ve Duyuru Akışı ({news.length})
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Anasayfa üst kayan haber şeridi ve haber kartları yalnızca buradaki gerçek kayıtlardan beslenir.
+              </p>
+            </div>
+            {(canManageBrand || canManageDoctors) && (
+              <button
+                type="button"
+                onClick={openNewNewsModal}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white hover:bg-blue-700 whitespace-nowrap"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Yeni Haber Ekle</span>
+              </button>
+            )}
+          </div>
+
+          {news.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-6 py-14 text-center dark:border-slate-800 dark:bg-slate-900">
+              <Newspaper className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <p className="mt-3 text-sm font-medium text-slate-900 dark:text-white">
+                Şu anda Herhangi bir veri bulunamadı
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Anasayfada görüntülenecek gerçek bir haber veya duyuru ekleyebilirsiniz.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {news.map((item) => (
+                <article
+                  key={item.id}
+                  className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="aspect-video bg-slate-100 dark:bg-slate-800">
+                    <SafeImage
+                      src={item.imageUrl}
+                      alt={item.title}
+                      fallbackLabel={item.categoryLabel || 'Haber'}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col p-4">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {item.categoryLabel}
+                      </span>
+                      <span className="font-mono tabular-nums">{item.publishedAt}</span>
+                    </div>
+                    <h3 className="mt-1.5 line-clamp-2 font-display text-sm font-semibold text-slate-900 dark:text-white">
+                      {item.title}
+                    </h3>
+                    <p className="mt-1 line-clamp-2 flex-1 text-xs text-slate-500 dark:text-slate-400">
+                      {item.summary}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
+                      <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                        {item.source} · {item.doctorName}
+                      </span>
+                      {(canManageBrand || canManageDoctors) && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditNewsModal(item)}
+                            aria-label={`${item.title} düzenle`}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteNews(item.id)}
+                            aria-label={`${item.title} sil`}
+                            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Media Picker Modal */}
       {mediaPickerTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
@@ -1389,42 +1582,52 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3 overflow-y-auto p-5 sm:grid-cols-3">
-              {mediaAssets.map((asset) => (
-                <button
-                  key={asset.id}
-                  type="button"
-                  onClick={() => {
-                    if (mediaPickerTarget === 'doctorAvatar') {
-                      setDocForm((prev) => ({ ...prev, avatarUrl: asset.url }));
-                    } else {
-                      setBrandDraft((prev) => ({
-                        ...prev,
-                        [mediaPickerTarget]: asset.url,
-                      }));
-                    }
-                    setMediaPickerTarget(null);
-                  }}
-                  className="group overflow-hidden rounded-xl border border-slate-200 text-left transition-colors hover:border-blue-600 dark:border-slate-800 dark:hover:border-blue-500"
-                >
-                  <div className="aspect-video overflow-hidden bg-slate-100 dark:bg-slate-800">
-                    <img
-                      src={asset.url}
-                      alt={asset.altText || asset.title}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                    />
-                  </div>
-                  <div className="p-2.5">
-                    <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
-                      {asset.title}
-                    </p>
-                    <p className="truncate font-mono text-[10px] text-slate-400">
-                      {asset.dimensions}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
+            {mediaAssets.filter((m) => !m.mimeType.startsWith('video/')).length === 0 ? (
+              <div className="p-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                Şu anda Herhangi bir veri bulunamadı
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 overflow-y-auto p-5 sm:grid-cols-3">
+                {mediaAssets
+                  .filter((m) => !m.mimeType.startsWith('video/'))
+                  .map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => {
+                        if (mediaPickerTarget === 'doctorAvatar') {
+                          setDocForm((prev) => ({ ...prev, avatarUrl: asset.url }));
+                        } else if (mediaPickerTarget === 'newsImage') {
+                          setNewsForm((prev) => ({ ...prev, imageUrl: asset.url }));
+                        } else {
+                          setBrandDraft((prev) => ({
+                            ...prev,
+                            [mediaPickerTarget]: asset.url,
+                          }));
+                        }
+                        setMediaPickerTarget(null);
+                      }}
+                      className="group overflow-hidden rounded-xl border border-slate-200 text-left transition-colors hover:border-blue-600 dark:border-slate-800 dark:hover:border-blue-500"
+                    >
+                      <div className="aspect-video overflow-hidden bg-slate-100 dark:bg-slate-800">
+                        <img
+                          src={asset.url}
+                          alt={asset.altText || asset.title}
+                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        />
+                      </div>
+                      <div className="p-2.5">
+                        <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
+                          {asset.title}
+                        </p>
+                        <p className="truncate font-mono text-[10px] text-slate-400">
+                          {asset.dimensions}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1695,6 +1898,178 @@ export const SiteStudioView: React.FC<SiteStudioViewProps> = ({
                         ? 'Değişiklikleri Kaydet'
                         : 'Doktoru Kaydet'}
                   </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* News Create / Edit Modal */}
+      {newsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+          <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+              <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+                {editingNews ? 'Haberi Düzenle' : 'Yeni Haber Ekle'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNewsModalOpen(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleNewsSubmit} className="space-y-4 overflow-y-auto p-6">
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-800/30">
+                <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-slate-200 dark:bg-slate-800">
+                  {newsForm.imageUrl ? (
+                    <img
+                      src={newsForm.imageUrl}
+                      alt={newsForm.title || 'Haber görseli'}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <ImageIcon className="h-5 w-5 text-slate-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <input
+                    type="text"
+                    value={newsForm.imageUrl}
+                    onChange={(e) =>
+                      setNewsForm((prev) => ({ ...prev, imageUrl: e.target.value }))
+                    }
+                    placeholder="Haber görseli URL adresi..."
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMediaPickerTarget('newsImage')}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5" />
+                      <span>Kütüphaneden Seç</span>
+                    </button>
+                    <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Bilgisayardan Seç</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleLocalFileUpload(e, 'newsImage')}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Haber Başlığı *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newsForm.title}
+                  onChange={(e) =>
+                    setNewsForm((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  placeholder="Örn: Yeni Klinik Araştırma Sonuçları Yayınlandı"
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Kategori Etiketi
+                  </label>
+                  <input
+                    type="text"
+                    value={newsForm.categoryLabel}
+                    onChange={(e) =>
+                      setNewsForm((prev) => ({ ...prev, categoryLabel: e.target.value }))
+                    }
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Yayın Tarihi
+                  </label>
+                  <input
+                    type="date"
+                    value={newsForm.publishedAt}
+                    onChange={(e) =>
+                      setNewsForm((prev) => ({ ...prev, publishedAt: e.target.value }))
+                    }
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Kaynak / Kurum
+                  </label>
+                  <input
+                    type="text"
+                    value={newsForm.source}
+                    onChange={(e) =>
+                      setNewsForm((prev) => ({ ...prev, source: e.target.value }))
+                    }
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    İlgili Hekim / Editör
+                  </label>
+                  <input
+                    type="text"
+                    value={newsForm.doctorName}
+                    onChange={(e) =>
+                      setNewsForm((prev) => ({ ...prev, doctorName: e.target.value }))
+                    }
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Haber Özeti
+                </label>
+                <textarea
+                  rows={3}
+                  value={newsForm.summary}
+                  onChange={(e) =>
+                    setNewsForm((prev) => ({ ...prev, summary: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setNewsModalOpen(false)}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  disabled={newsSaving}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>{newsSaving ? 'Kaydediliyor...' : editingNews ? 'Haberi Güncelle' : 'Haberi Kaydet'}</span>
                 </button>
               </div>
             </form>

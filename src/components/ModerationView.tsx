@@ -130,7 +130,7 @@ export const ModerationView: React.FC<ModerationViewProps> = ({
           {filtered.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white px-6 py-14 text-center dark:border-slate-800 dark:bg-slate-900">
               <p className="text-sm font-medium text-slate-900 dark:text-white">
-                Bu kuyrukta incelenecek yorum yok
+                Şu anda Herhangi bir veri bulunamadı
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Diğer durum sekmelerinden moderasyon geçmişini görüntüleyebilirsiniz.

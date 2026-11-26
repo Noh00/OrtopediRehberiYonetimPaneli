@@ -93,7 +93,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
             <div className="px-6 py-14 text-center">
               <Bell className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
               <p className="mt-3 text-sm font-medium text-slate-900 dark:text-white">
-                Gösterilecek bildirim bulunamadı
+                Şu anda Herhangi bir veri bulunamadı
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Filtreyi değiştirerek tüm bildirim geçmişinizi inceleyebilirsiniz.

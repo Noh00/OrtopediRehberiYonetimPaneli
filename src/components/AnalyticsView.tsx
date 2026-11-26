@@ -72,22 +72,34 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           publishedWithDuration.reduce((a, p) => a + p.avgReadDurationSec, 0) /
             publishedWithDuration.length
         )
-      : 210;
+      : 0;
   const avgBounce =
     publishedWithDuration.length > 0
       ? (
           publishedWithDuration.reduce((a, p) => a + p.bounceRate, 0) /
           publishedWithDuration.length
         ).toFixed(1)
-      : '34.2';
+      : '0';
 
-  const channels = [
-    { name: 'Organik Arama (Google / Bing)', share: 58, sessions: Math.round(uniqueVisitors * 0.58), color: '#2563EB' },
-    { name: 'Doğrudan Ziyaret', share: 20, sessions: Math.round(uniqueVisitors * 0.2), color: '#0D9488' },
-    { name: 'E-posta Bülteni', share: 11, sessions: Math.round(uniqueVisitors * 0.11), color: '#4F46E5' },
-    { name: 'Sosyal Medya (X / LinkedIn)', share: 8, sessions: Math.round(uniqueVisitors * 0.08), color: '#D97706' },
-    { name: 'Yönlendirme (Referral)', share: 3, sessions: Math.round(uniqueVisitors * 0.03), color: '#64748B' },
-  ];
+  const organicPct = totalViews > 0 ? Math.round((totalOrganic / totalViews) * 100) : 0;
+  const directPct = totalViews > 0 ? Math.max(0, 100 - organicPct) : 0;
+  const channels =
+    totalViews > 0
+      ? [
+          {
+            name: 'Organik Arama (Google / Bing)',
+            share: organicPct,
+            sessions: totalOrganic,
+            color: '#2563EB',
+          },
+          {
+            name: 'Doğrudan ve Diğer Ziyaretler',
+            share: directPct,
+            sessions: Math.max(0, totalViews - totalOrganic),
+            color: '#0D9488',
+          },
+        ]
+      : [];
 
   const categoryPerf = categories.map((cat) => {
     const catPosts = posts.filter((p) => p.categoryId === cat.id);
@@ -131,7 +143,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const handleExportJson = () => {
     if (!canExport) return;
     const payload = {
-      generatedAt: '2026-11-26T09:45:00Z',
+      generatedAt: new Date().toISOString(),
       period,
       summary: { totalViews, uniqueVisitors, totalOrganic, avgDuration, avgBounce },
       posts: filteredPosts.map((p) => ({
@@ -246,8 +258,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           <p className="mt-2 font-mono text-2xl font-semibold text-slate-900 tabular-nums dark:text-white">
             {formatNumberTR(totalViews)}
           </p>
-          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-            +16,2% önceki döneme göre
+          <p className="mt-1 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+            {filteredPosts.length > 0
+              ? `${filteredPosts.length} yazı üzerinden`
+              : 'Şu anda Herhangi bir veri bulunamadı'}
           </p>
         </div>
 
@@ -268,10 +282,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             Ortalama Okuma Süresi
           </p>
           <p className="mt-2 font-mono text-2xl font-semibold text-slate-900 tabular-nums dark:text-white">
-            {formatDurationTR(avgDuration)}
+            {avgDuration > 0 ? formatDurationTR(avgDuration) : '0 dk 00 sn'}
           </p>
-          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-            +14 sn etkileşim artışı
+          <p className="mt-1 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+            {publishedWithDuration.length > 0
+              ? `${publishedWithDuration.length} ölçümlenmiş yazı`
+              : 'Şu anda Herhangi bir veri bulunamadı'}
           </p>
         </div>
 
@@ -282,8 +298,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           <p className="mt-2 font-mono text-2xl font-semibold text-slate-900 tabular-nums dark:text-white">
             %{avgBounce}
           </p>
-          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-            -2,4 puan iyileşme
+          <p className="mt-1 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+            {publishedWithDuration.length > 0
+              ? 'Gerçek yazı ortalaması'
+              : 'Şu anda Herhangi bir veri bulunamadı'}
           </p>
         </div>
       </div>
@@ -308,45 +326,51 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             )}
           </div>
 
-          <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-52 w-full overflow-visible">
-            {[0.25, 0.5, 0.75, 1].map((r) => {
-              const y = H - py - r * (H - py * 2);
-              return (
-                <line
-                  key={r}
-                  x1={px}
-                  y1={y}
-                  x2={W - px}
-                  y2={y}
-                  stroke="currentColor"
-                  className="text-slate-100 dark:text-slate-800"
-                  strokeDasharray="3 3"
-                />
-              );
-            })}
-            <path d={pathTotal} fill="none" stroke="#2563EB" strokeWidth="2.2" />
-            <path d={pathOrg} fill="none" stroke="#0D9488" strokeWidth="2" strokeDasharray="4 3" />
-            {pts.map((p, idx) => (
-              <g key={p.d.date}>
-                <circle
-                  cx={p.x}
-                  cy={p.yTotal}
-                  r={hoverIdx === idx ? 5 : 2.5}
-                  fill="#2563EB"
-                />
-                <rect
-                  x={p.x - 10}
-                  y={0}
-                  width={20}
-                  height={H}
-                  fill="transparent"
-                  onMouseEnter={() => setHoverIdx(idx)}
-                  onMouseLeave={() => setHoverIdx(null)}
-                  className="cursor-crosshair"
-                />
-              </g>
-            ))}
-          </svg>
+          {seriesData.length === 0 ? (
+            <div className="mt-4 flex h-52 items-center justify-center rounded-xl border border-dashed border-slate-200 px-4 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              Şu anda Herhangi bir veri bulunamadı
+            </div>
+          ) : (
+            <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-52 w-full overflow-visible">
+              {[0.25, 0.5, 0.75, 1].map((r) => {
+                const y = H - py - r * (H - py * 2);
+                return (
+                  <line
+                    key={r}
+                    x1={px}
+                    y1={y}
+                    x2={W - px}
+                    y2={y}
+                    stroke="currentColor"
+                    className="text-slate-100 dark:text-slate-800"
+                    strokeDasharray="3 3"
+                  />
+                );
+              })}
+              <path d={pathTotal} fill="none" stroke="#2563EB" strokeWidth="2.2" />
+              <path d={pathOrg} fill="none" stroke="#0D9488" strokeWidth="2" strokeDasharray="4 3" />
+              {pts.map((p, idx) => (
+                <g key={p.d.date}>
+                  <circle
+                    cx={p.x}
+                    cy={p.yTotal}
+                    r={hoverIdx === idx ? 5 : 2.5}
+                    fill="#2563EB"
+                  />
+                  <rect
+                    x={p.x - 10}
+                    y={0}
+                    width={20}
+                    height={H}
+                    fill="transparent"
+                    onMouseEnter={() => setHoverIdx(idx)}
+                    onMouseLeave={() => setHoverIdx(null)}
+                    className="cursor-crosshair"
+                  />
+                </g>
+              ))}
+            </svg>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -356,26 +380,32 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             Dönem içi kaynak bazlı ziyaretçi payları
           </p>
-          <div className="mt-5 space-y-4">
-            {channels.map((ch) => (
-              <div key={ch.name} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
-                    {ch.name}
-                  </span>
-                  <span className="font-mono text-slate-500 tabular-nums">
-                    %{ch.share} · {formatNumberTR(ch.sessions)}
-                  </span>
+          {channels.length === 0 ? (
+            <div className="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              Şu anda Herhangi bir veri bulunamadı
+            </div>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {channels.map((ch) => (
+                <div key={ch.name} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {ch.name}
+                    </span>
+                    <span className="font-mono text-slate-500 tabular-nums">
+                      %{ch.share} · {formatNumberTR(ch.sessions)}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${ch.share}%`, backgroundColor: ch.color }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${ch.share}%`, backgroundColor: ch.color }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -397,22 +427,30 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {categoryPerf.map((cat) => (
-                <tr key={cat.id}>
-                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
-                    {cat.name}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                    {cat.postCount}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                    {formatNumberTR(cat.views)}
-                  </td>
-                  <td className="px-5 py-3 text-right font-mono tabular-nums text-teal-700 dark:text-teal-400">
-                    %{cat.organicPct}
+              {categoryPerf.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Şu anda Herhangi bir veri bulunamadı
                   </td>
                 </tr>
-              ))}
+              ) : (
+                categoryPerf.map((cat) => (
+                  <tr key={cat.id}>
+                    <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
+                      {cat.name}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                      {cat.postCount}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                      {formatNumberTR(cat.views)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono tabular-nums text-teal-700 dark:text-teal-400">
+                      %{cat.organicPct}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -433,22 +471,30 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {authorPerf.map((u) => (
-                <tr key={u.id}>
-                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
-                    {u.name}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                    {u.postsPublished}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                    {formatNumberTR(u.views)}
-                  </td>
-                  <td className="px-5 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                    {u.comments}
+              {authorPerf.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Şu anda Herhangi bir veri bulunamadı
                   </td>
                 </tr>
-              ))}
+              ) : (
+                authorPerf.map((u) => (
+                  <tr key={u.id}>
+                    <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
+                      {u.name}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                      {u.postsPublished}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                      {formatNumberTR(u.views)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                      {u.comments}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -515,25 +561,33 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredPosts.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
-                    {p.title}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                    {formatNumberTR(Math.round(p.views * multiplier))}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-teal-700 dark:text-teal-400">
-                    {formatNumberTR(Math.round(p.organicViews * multiplier))}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                    {p.avgReadDurationSec > 0 ? formatDurationTR(p.avgReadDurationSec) : '—'}
-                  </td>
-                  <td className="px-5 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                    {p.bounceRate > 0 ? `%${p.bounceRate}` : '—'}
+              {filteredPosts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Şu anda Herhangi bir veri bulunamadı
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredPosts.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                    <td className="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
+                      {p.title}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                      {formatNumberTR(Math.round(p.views * multiplier))}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-teal-700 dark:text-teal-400">
+                      {formatNumberTR(Math.round(p.organicViews * multiplier))}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                      {p.avgReadDurationSec > 0 ? formatDurationTR(p.avgReadDurationSec) : '—'}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                      {p.bounceRate > 0 ? `%${p.bounceRate}` : '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

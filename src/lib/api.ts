@@ -1,11 +1,23 @@
 import { auth } from './firebase';
 
+let memorySessionToken: string | null = null;
+
+export function setCustomSessionToken(token: string | null) {
+  memorySessionToken = token;
+}
+
+export function getCustomSessionToken(): string | null {
+  return memorySessionToken;
+}
+
 export async function apiFetch<T = unknown>(
   url: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const user = auth.currentUser;
-  const token = user ? await user.getIdToken() : null;
+  let token = memorySessionToken;
+  if (!token && auth.currentUser) {
+    token = await auth.currentUser.getIdToken();
+  }
 
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && options.body) {
