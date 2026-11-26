@@ -1,0 +1,8 @@
+{
+  "name": "KalemDesk — Blog ve Yayın Yönetim Paneli",
+  "description": "Kapsamlı blog içerik yönetimi, özelleştirilmiş SEO stüdyosu, kullanıcı rolleri, gelişmiş analitik raporlama, moderasyon araçları, bildirim merkezi ve ekip takvim-görev modülü.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
